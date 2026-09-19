@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { EJECT_BUFFER, PIPE_RATE_PER_SEC, SIM_HZ, UPKEEP_PER_SEC, reach } from "../src/config";
+import {
+  EJECT_BUFFER,
+  MAX_WALLS_PER_COLONY,
+  PIPE_RATE_PER_SEC,
+  SIM_HZ,
+  UPKEEP_PER_SEC,
+  WALL_COST,
+  reach,
+} from "../src/config";
 import type { Arena } from "../src/sim/arena";
 import { dist } from "../src/sim/geometry";
 import { World } from "../src/sim/world";
@@ -152,6 +160,73 @@ describe("pipes", () => {
     const r = world.addColony(rival.id, 0, 0, 100);
     const f = world.addFall(100, 0, 100);
     expect(world.canConnect(me.id, f.id, r.id).ok).toBe(false);
+  });
+});
+
+describe("walls", () => {
+  // Rival at (0,0), me at (200,0). A wall from me with its crossbar at (100,0)
+  // sits across the line between us.
+  function standoff() {
+    const { world, me } = soloWorld();
+    const rival = world.addPlayer("rival", true);
+    const mine = world.addColony(me.id, 200, 0, 300);
+    const theirs = world.addColony(rival.id, 0, 0, 300);
+    return { world, me, rival, mine, theirs };
+  }
+
+  it("crossbar blocks an opponent's hypha and costs the anchor colony", () => {
+    const { world, me, rival, mine, theirs } = standoff();
+    expect(world.canConnect(rival.id, mine.id, theirs.id).ok).toBe(true);
+    world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
+    world.step();
+    expect(world.barriers.size).toBe(1);
+    expect(mine.nutrients).toBeCloseTo(300 - WALL_COST - UPKEEP_PER_SEC / SIM_HZ);
+    expect(world.canConnect(rival.id, mine.id, theirs.id)).toEqual({
+      ok: false,
+      reason: "no line of sight",
+    });
+  });
+
+  it("only the crossbar blocks — lines that cross just the stem are fine", () => {
+    const { world, me, mine } = standoff();
+    world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
+    world.step();
+    // Both lines run along x=150, crossing the stem (y=0) but not the crossbar (x=100).
+    const a = world.addFall(150, -80, 100);
+    const c = world.addColony(me.id, 150, 70, 100);
+    expect(world.hasLineOfSight(a, { x: 150, y: 80 })).toBe(true);
+    expect(world.canConnect(me.id, a.id, c.id).ok).toBe(true);
+  });
+
+  it("severs an existing drain that crosses the new crossbar", () => {
+    const { world, me, rival, mine, theirs } = standoff();
+    world.enqueue({ type: "connect", player: rival.id, from: mine.id, to: theirs.id });
+    world.step();
+    expect(world.pipes.size).toBe(1);
+    world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
+    world.step();
+    expect(world.pipes.size).toBe(0);
+  });
+
+  it("disappears with its colony and can be demolished only by its owner", () => {
+    const { world, me, rival, mine } = standoff();
+    world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
+    world.step();
+    const [wall] = world.barriers.values();
+    expect(world.canDemolish(rival.id, wall.id).ok).toBe(false);
+    mine.nutrients = 0.01;
+    world.step();
+    expect(world.barriers.size).toBe(0);
+  });
+
+  it("enforces the per-colony wall limit", () => {
+    const { world, me, mine } = standoff();
+    for (let i = 0; i < MAX_WALLS_PER_COLONY; i++) {
+      world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 300, y: -150 + i * 150 });
+    }
+    world.step();
+    expect(world.barriers.size).toBe(MAX_WALLS_PER_COLONY);
+    expect(world.canBuildWall(me.id, mine.id, { x: 200, y: 150 }).ok).toBe(false);
   });
 });
 

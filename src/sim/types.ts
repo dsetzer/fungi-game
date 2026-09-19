@@ -33,6 +33,22 @@ export interface Pipe {
   owner: PlayerId;
 }
 
+/**
+ * A player-built wall (§6.5): a stem from the anchor colony out to a crossbar.
+ * Only the crossbar (a → b) blocks line of sight; the stem is just a tether.
+ */
+export interface Barrier {
+  id: EntityId;
+  owner: PlayerId;
+  anchor: EntityId;
+  /** Crossbar centre (end of the stem). */
+  x: number;
+  y: number;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+}
+
+/** Terrain: one circle of a circle-cluster arena wall (§4). */
 export interface Wall {
   x: number;
   y: number;
@@ -46,6 +62,8 @@ export interface Wall {
 export type Command =
   | { type: "eject"; player: PlayerId; from: EntityId; x: number; y: number }
   | { type: "connect"; player: PlayerId; from: EntityId; to: EntityId }
-  | { type: "cut"; player: PlayerId; pipe: EntityId };
+  | { type: "cut"; player: PlayerId; pipe: EntityId }
+  | { type: "wall"; player: PlayerId; from: EntityId; x: number; y: number }
+  | { type: "demolish"; player: PlayerId; wall: EntityId };
 
 export type CheckResult = { ok: true } | { ok: false; reason: string };

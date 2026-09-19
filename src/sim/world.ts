@@ -15,13 +15,25 @@ import {
   SPAWN_CLUSTER_DISTANCE,
   START_NUTRIENTS,
   UPKEEP_PER_SEC,
+  MAX_WALLS_PER_COLONY,
+  WALL_BAR_LENGTH,
+  WALL_COST,
+  WALLS_CUT_EXISTING_PIPES,
   colonyRadius,
   fallRadius,
   reach,
 } from "../config";
 import { generateArena, type Arena } from "./arena";
-import { dist, makeRng, segmentHitsCircle, type Vec } from "./geometry";
+import {
+  dist,
+  distToSegmentSq,
+  makeRng,
+  segmentHitsCircle,
+  segmentsIntersect,
+  type Vec,
+} from "./geometry";
 import type {
+  Barrier,
   CheckResult,
   Command,
   EntityId,
@@ -43,6 +55,7 @@ export class World {
   tick = 0;
   readonly nodes = new Map<EntityId, GameNode>();
   readonly pipes = new Map<EntityId, Pipe>();
+  readonly barriers = new Map<EntityId, Barrier>();
   readonly players: Player[] = [];
   winner: PlayerId | null = null;
   ended = false;
@@ -172,8 +185,31 @@ export class World {
     return undefined;
   }
 
+  /** Blocked by terrain and by any player-built crossbar. */
   hasLineOfSight(a: Vec, b: Vec): boolean {
-    return !this.arena.walls.some((w) => segmentHitsCircle(a, b, w));
+    if (this.arena.walls.some((w) => segmentHitsCircle(a, b, w))) return false;
+    for (const bar of this.barriers.values()) {
+      if (segmentsIntersect(a, b, bar.a, bar.b)) return false;
+    }
+    return true;
+  }
+
+  wallCount(nodeId: EntityId): number {
+    let c = 0;
+    for (const b of this.barriers.values()) if (b.anchor === nodeId) c++;
+    return c;
+  }
+
+  /** Crossbar endpoints for a wall whose stem runs from `from` to `target`. */
+  crossbarFor(from: Vec, target: Vec): { a: Vec; b: Vec } {
+    const d = dist(from.x, from.y, target.x, target.y) || 1;
+    // Unit vector perpendicular to the stem, scaled to half the bar length.
+    const px = (-(target.y - from.y) / d) * (WALL_BAR_LENGTH / 2);
+    const py = ((target.x - from.x) / d) * (WALL_BAR_LENGTH / 2);
+    return {
+      a: { x: target.x + px, y: target.y + py },
+      b: { x: target.x - px, y: target.y - py },
+    };
   }
 
   /** Inside the arena, not in a wall, not overlapping any node. */
@@ -224,6 +260,31 @@ export class World {
     return YES;
   }
 
+  canBuildWall(player: PlayerId, fromId: EntityId, target: Vec): CheckResult {
+    const from = this.nodes.get(fromId);
+    if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
+    if (from.nutrients - WALL_COST < EJECT_MIN_PARENT_REMAINING) return NO("too weak to build");
+    if (this.wallCount(fromId) >= MAX_WALLS_PER_COLONY) return NO("wall limit reached");
+    const d = dist(from.x, from.y, target.x, target.y);
+    if (d < this.radiusOf(from) + 10) return NO("too close");
+    if (d > this.reachOf(from)) return NO("out of reach");
+    if (Math.hypot(target.x, target.y) > this.arena.radius) return NO("outside arena");
+    if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
+    const { a, b } = this.crossbarFor(from, target);
+    for (const n of this.nodes.values()) {
+      const r = this.radiusOf(n);
+      if (distToSegmentSq(n.x, n.y, a.x, a.y, b.x, b.y) < r * r) return NO("blocked");
+    }
+    return YES;
+  }
+
+  canDemolish(player: PlayerId, wallId: EntityId): CheckResult {
+    const wall = this.barriers.get(wallId);
+    if (!wall) return NO("no such wall");
+    if (wall.owner !== player) return NO("not your wall");
+    return YES;
+  }
+
   // ---------- commands ----------
 
   /** Commands are applied at the start of the next tick, in arrival order. */
@@ -249,6 +310,29 @@ export class World {
         if (this.canCut(cmd.player, cmd.pipe).ok) this.pipes.delete(cmd.pipe);
         return;
       }
+      case "wall": {
+        if (!this.canBuildWall(cmd.player, cmd.from, cmd).ok) return;
+        const from = this.nodes.get(cmd.from)!;
+        from.nutrients -= WALL_COST;
+        const { a, b } = this.crossbarFor(from, cmd);
+        const id = this.nextId++;
+        const bar: Barrier = { id, owner: cmd.player, anchor: from.id, x: cmd.x, y: cmd.y, a, b };
+        this.barriers.set(id, bar);
+        if (WALLS_CUT_EXISTING_PIPES) this.cutPipesCrossing(bar);
+        return;
+      }
+      case "demolish": {
+        if (this.canDemolish(cmd.player, cmd.wall).ok) this.barriers.delete(cmd.wall);
+        return;
+      }
+    }
+  }
+
+  private cutPipesCrossing(bar: Barrier): void {
+    for (const p of this.pipes.values()) {
+      const s = this.nodes.get(p.from)!;
+      const e = this.nodes.get(p.to)!;
+      if (segmentsIntersect(s, e, bar.a, bar.b)) this.pipes.delete(p.id);
     }
   }
 
@@ -312,6 +396,9 @@ export class World {
       this.nodes.delete(n.id);
       for (const p of this.pipes.values()) {
         if (p.from === n.id || p.to === n.id) this.pipes.delete(p.id);
+      }
+      for (const b of this.barriers.values()) {
+        if (b.anchor === n.id) this.barriers.delete(b.id);
       }
     }
   }

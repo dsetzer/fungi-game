@@ -31,6 +31,16 @@ export function segmentHitsCircle(a: Vec, b: Vec, c: Circle): boolean {
   return distToSegmentSq(c.x, c.y, a.x, a.y, b.x, b.y) < c.r * c.r;
 }
 
+/** True if segments AB and CD cross (touching endpoints don't count). */
+export function segmentsIntersect(a: Vec, b: Vec, c: Vec, d: Vec): boolean {
+  const cross = (o: Vec, p: Vec, q: Vec) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
 /** Deterministic PRNG (mulberry32) so a seed fully determines an arena. */
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0;

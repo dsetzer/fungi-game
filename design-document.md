@@ -102,10 +102,15 @@ Nutrient falls are resource patches scattered across the arena at the start of e
 
 ### 6.5 Walls — Defensive Structures
 
-From a node, a player can lay down a wall: a chain of line segments arranged around the node's own radius, long enough in total that a colony can be **fully** enclosed if the player commits to it. Walls have two effects, both useful defensively:
+*Revised from screenshots of the original (`reference/original-1.webp`, `original-2.webp`).*
 
-- They physically block enemy nodes from reaching in — since pipelines require line-of-sight (Section 6.2), a well-placed wall segment can sever a specific incoming attack angle without needing a full enclosure.
-- A **full** enclosure blocks every angle, at the cost of the resources and build time spent doing it — a strong but committal counter to the aggression in 6.3.
+A wall is a **⊢ shape**: a thin stem drawn from one of your colonies out to a point, ending in a short **crossbar** perpendicular to the stem. Only the crossbar is a barrier — the stem is just the tether back to the colony that placed it.
+
+- The crossbar blocks line of sight (Section 6.2), so it's placed *across* the line an opponent would use: typically right in front of an enemy colony that's reaching toward yours, or fanned out on the exposed side of a colony (the screenshots show a colony with three walls covering one flank).
+- A colony can hold several walls; covering every angle takes several, which is the committal "full enclosure" option.
+- Walls belong to their anchor colony and disappear if it dies.
+
+> **Prototype choices, unconfirmed:** a new crossbar also severs any existing hypha that crosses it; walls cost a one-off 15 nutrients; max 3 per colony; crossbar length is fixed (80 units).
 
 ### 6.6 Logistics & Emergent Strategy
 

@@ -48,9 +48,67 @@ export class Renderer {
     ctx.translate(-camera.x, -camera.y);
 
     this.drawArena(world);
+    for (const b of world.barriers.values()) {
+      const color = world.player(b.owner)?.color ?? "#888";
+      const anchor = world.nodes.get(b.anchor)!;
+      this.drawWall(anchor, b, b.a, b.b, color, b.id === input.hoverWall ? 1 : 0.8);
+    }
     for (const p of world.pipes.values()) this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
     for (const n of world.nodes.values()) this.drawNode(world, n, timeMs);
     this.drawDragPreview(world, input, player);
+    this.drawWallPreview(world, input, player);
+  }
+
+  /** Stem from the colony to the crossbar, drawn as a ⊢ like the original. */
+  private drawWall(from: Vec, mid: Vec, a: Vec, b: Vec, color: string, alpha: number): void {
+    const { ctx } = this;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(mid.x, mid.y);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+    ctx.globalAlpha = 1;
+  }
+
+  private drawWallPreview(world: World, input: Input, player: number): void {
+    const fromId = input.wallDrag;
+    const from = fromId != null ? world.nodes.get(fromId) : undefined;
+    if (!from) return;
+    const check = world.canBuildWall(player, from.id, input.cursor);
+    const { a, b } = world.crossbarFor(from, input.cursor);
+    this.drawReachRing(world, from);
+    this.drawWall(from, input.cursor, a, b, check.ok ? COLORS.valid : COLORS.invalid, 0.8);
+    if (!check.ok) this.drawReason(check.reason, input.cursor);
+  }
+
+  private drawReachRing(world: World, from: GameNode): void {
+    const { ctx } = this;
+    ctx.strokeStyle = "#0002";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(from.x, from.y, world.reachOf(from), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  private drawReason(reason: string, at: Vec): void {
+    const { ctx } = this;
+    ctx.fillStyle = COLORS.invalid;
+    ctx.font = `${14 / this.camera.zoom}px system-ui, sans-serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(reason, at.x + 12 / this.camera.zoom, at.y - 8 / this.camera.zoom);
   }
 
   private drawArena(world: World): void {
@@ -164,15 +222,7 @@ export class Renderer {
         : world.canConnect(player, from.id, target.id)
       : world.canEject(player, from.id, input.cursor);
 
-    if (from.owner === player) {
-      ctx.strokeStyle = "#0002";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      ctx.arc(from.x, from.y, world.reachOf(from), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    if (from.owner === player) this.drawReachRing(world, from);
     if (!check) return;
 
     const color = check.ok ? COLORS.valid : COLORS.invalid;
@@ -190,13 +240,7 @@ export class Renderer {
       ctx.arc(end.x, end.y, colonyRadius(EJECT_BUFFER), 0, Math.PI * 2);
       ctx.stroke();
     }
-    if (!check.ok) {
-      ctx.fillStyle = color;
-      ctx.font = `${14 / this.camera.zoom}px system-ui, sans-serif`;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(check.reason, end.x + 12 / this.camera.zoom, end.y - 8 / this.camera.zoom);
-    }
+    if (!check.ok) this.drawReason(check.reason, end);
   }
 }
 

@@ -276,6 +276,8 @@ export class World {
     const outCount = new Map<EntityId, number>();
     for (const p of this.pipes.values()) outCount.set(p.from, (outCount.get(p.from) ?? 0) + 1);
 
+    const inflow = new Map<EntityId, number>();
+    const outflow = new Map<EntityId, number>();
     const perStep = PIPE_RATE_PER_SEC * DT;
     for (const p of this.pipes.values()) {
       const src = this.nodes.get(p.from)!;
@@ -283,10 +285,18 @@ export class World {
       const amount = perStep * Math.min(1, Math.max(0, src.nutrients) / wanted);
       add(p.from, -amount);
       add(p.to, amount);
+      outflow.set(p.from, (outflow.get(p.from) ?? 0) + amount);
+      inflow.set(p.to, (inflow.get(p.to) ?? 0) + amount);
     }
 
+    // Upkeep is only charged to nodes that aren't sustained. A node is sustained
+    // while nutrients flow into it and it isn't sending out more than it receives.
+    const EPS = 1e-9;
     for (const n of this.nodes.values()) {
-      if (n.kind === "colony" || FALLS_PAY_UPKEEP) add(n.id, -UPKEEP_PER_SEC * DT);
+      if (n.kind !== "colony" && !FALLS_PAY_UPKEEP) continue;
+      const inAmt = inflow.get(n.id) ?? 0;
+      const sustained = inAmt > EPS && inAmt + EPS >= (outflow.get(n.id) ?? 0);
+      if (!sustained) add(n.id, -UPKEEP_PER_SEC * DT);
     }
 
     for (const n of this.nodes.values()) {

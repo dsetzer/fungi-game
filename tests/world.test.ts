@@ -35,6 +35,38 @@ describe("upkeep", () => {
     expect(world.ended).toBe(true);
   });
 
+  it("waives upkeep for a relay that passes on what it receives", () => {
+    const { world, me } = soloWorld();
+    const fall = world.addFall(-120, 0, 500);
+    const relay = world.addColony(me.id, 0, 0, 20);
+    const home = world.addColony(me.id, 120, 0, 100);
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: relay.id });
+    world.enqueue({ type: "connect", player: me.id, from: relay.id, to: home.id });
+    world.step();
+    const r0 = relay.nutrients;
+    const h0 = home.nutrients;
+    runSeconds(world, 30);
+    expect(relay.nutrients).toBeCloseTo(r0);
+    expect(relay.rate).toBeCloseTo(0);
+    expect(home.nutrients).toBeCloseTo(h0 + 30 * PIPE_RATE_PER_SEC);
+  });
+
+  it("charges upkeep when a colony sends out more than it receives", () => {
+    const { world, me } = soloWorld();
+    const fall = world.addFall(-120, 0, 500);
+    const hub = world.addColony(me.id, 0, 0, 100);
+    const a = world.addColony(me.id, 120, 0, 100);
+    const b = world.addColony(me.id, 0, 120, 100);
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: hub.id });
+    world.enqueue({ type: "connect", player: me.id, from: hub.id, to: a.id });
+    world.enqueue({ type: "connect", player: me.id, from: hub.id, to: b.id });
+    world.step();
+    const h0 = hub.nutrients;
+    runSeconds(world, 1);
+    // in 3, out 6 → net -3, plus upkeep because it isn't sustained
+    expect(hub.nutrients).toBeCloseTo(h0 - PIPE_RATE_PER_SEC - UPKEEP_PER_SEC);
+  });
+
   it("does not charge nutrient falls upkeep", () => {
     const { world, me } = soloWorld();
     world.addColony(me.id, 0, 0, 100);
@@ -78,8 +110,9 @@ describe("pipes", () => {
     const a0 = a.nutrients;
     const b0 = b.nutrients;
     runSeconds(world, 1);
+    // a has no inflow so still pays upkeep; b is being fed so it doesn't.
     expect(a.nutrients).toBeCloseTo(a0 - PIPE_RATE_PER_SEC - UPKEEP_PER_SEC);
-    expect(b.nutrients).toBeCloseTo(b0 + PIPE_RATE_PER_SEC - UPKEEP_PER_SEC);
+    expect(b.nutrients).toBeCloseTo(b0 + PIPE_RATE_PER_SEC);
   });
 
   it("allows only one pipe per pair, in either direction", () => {

@@ -47,6 +47,7 @@ All player actions are `Command`s queued into the `World` and applied at the sta
 These are placeholders. Change them in `config.ts` / `world.ts`:
 
 - **Mouse buttons:** left-drag = eject/connect, right-click = cut hypha, right-drag = pan.
+- **Upkeep:** 1/s, charged only to colonies that aren't sustained (sustained = has inflow and isn't sending out more than it receives).
 - **Falls pay upkeep:** no (`FALLS_PAY_UPKEEP = false`).
 - **Pipe cap:** 4 per colony (in + out); falls are uncapped so funnelling works.
 - **Reach when draining:** uses the reach of the endpoint(s) you own.

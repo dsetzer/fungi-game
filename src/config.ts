@@ -49,12 +49,14 @@ export const NODE_SPACING = 22; // min clearance between a new node and existing
 
 // Visual only: the fluid "aura" around each core grows with stored nutrients.
 // Auras of the same owner merge into one contiguous shape (metaballs).
+// Almost no fixed base, so a nearly-empty node visibly shrinks back toward its dot
+// (16 → ~16, fresh eject 30 → ~21, start 100 → ~36, 400 → ~69).
 export function colonyAura(nutrients: number): number {
-  return 18 + Math.sqrt(Math.max(0, nutrients)) * 3.5;
+  return 3 + Math.sqrt(Math.max(0, nutrients)) * 3.3;
 }
 
 export function fallAura(nutrients: number): number {
-  return 10 + Math.sqrt(Math.max(0, nutrients)) * 1.5;
+  return 2 + Math.sqrt(Math.max(0, nutrients)) * 1.9;
 }
 
 export function reach(nutrients: number): number {

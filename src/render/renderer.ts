@@ -58,6 +58,10 @@ export class Renderer {
     }
     for (const p of world.pipes.values()) this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
     const hovered = input.nodeAt(input.cursor);
+    // Hovering your own colony shows how far it can reach right now.
+    if (hovered?.owner === player && !input.drag && input.wallDrag == null) {
+      this.drawReachRing(world, hovered);
+    }
     for (const n of world.nodes.values()) this.drawNode(world, n, n === hovered);
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);

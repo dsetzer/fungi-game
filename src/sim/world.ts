@@ -8,7 +8,8 @@ import {
   FALL_POOL_CENTER,
   FALL_POOL_EDGE,
   FALLS_PAY_UPKEEP,
-  MAX_PIPES_PER_COLONY,
+  MAX_IN_PIPES_PER_COLONY,
+  MAX_OUT_PIPES_PER_COLONY,
   NEUTRAL_FALL_CLUSTERS,
   PIPE_RATE_PER_SEC,
   PLAYER_COUNT,
@@ -180,9 +181,17 @@ export class World {
     return reach(n.nutrients);
   }
 
-  pipeCount(nodeId: EntityId): number {
+  /** Hyphae flowing out of this node. */
+  outCount(nodeId: EntityId): number {
     let c = 0;
-    for (const p of this.pipes.values()) if (p.from === nodeId || p.to === nodeId) c++;
+    for (const p of this.pipes.values()) if (p.from === nodeId) c++;
+    return c;
+  }
+
+  /** Hyphae flowing into this node. */
+  inCount(nodeId: EntityId): number {
+    let c = 0;
+    for (const p of this.pipes.values()) if (p.to === nodeId) c++;
     return c;
   }
 
@@ -236,8 +245,8 @@ export class World {
     const from = this.nodes.get(fromId);
     if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
     if (from.nutrients - EJECT_BUFFER < EJECT_MIN_PARENT_REMAINING) return NO("too weak to eject");
-    // Ejecting auto-grows a hypha parent → child, so the parent needs a free slot.
-    if (this.pipeCount(fromId) >= MAX_PIPES_PER_COLONY) return NO("pipe limit reached");
+    // Ejecting auto-grows a hypha parent → child, so the parent needs a free output.
+    if (this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
     if (!this.isFreeSpot(target, NODE_SPACING)) return NO("blocked");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
@@ -251,10 +260,11 @@ export class World {
     const mine = [from, to].filter((n) => n.owner === player);
     if (mine.length === 0) return NO("must involve one of your colonies");
     if (this.pipeBetween(fromId, toId)) return NO("already connected");
-    for (const n of [from, to]) {
-      if (n.kind === "colony" && this.pipeCount(n.id) >= MAX_PIPES_PER_COLONY) {
-        return NO("pipe limit reached");
-      }
+    if (from.kind === "colony" && this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) {
+      return NO("output limit reached");
+    }
+    if (to.kind === "colony" && this.inCount(toId) >= MAX_IN_PIPES_PER_COLONY) {
+      return NO("input limit reached");
     }
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   EJECT_BUFFER,
-  MAX_PIPES_PER_COLONY,
+  MAX_IN_PIPES_PER_COLONY,
+  MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   PIPE_RATE_PER_SEC,
   SIM_HZ,
@@ -145,18 +146,47 @@ describe("eject", () => {
     expect(world.pipes.size).toBe(1);
   });
 
-  it("can't eject when the parent has no free hypha slot", () => {
+  it("can't eject when the parent has no free output", () => {
     const { world, me } = soloWorld();
     const parent = world.addColony(me.id, 0, 0, 500);
-    for (let i = 0; i < MAX_PIPES_PER_COLONY; i++) {
-      const a = (i / MAX_PIPES_PER_COLONY) * Math.PI * 2;
+    for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
+      const a = (i / MAX_OUT_PIPES_PER_COLONY) * Math.PI * 2;
       world.enqueue({ type: "eject", player: me.id, from: parent.id, x: Math.cos(a) * 100, y: Math.sin(a) * 100 });
     }
     world.step();
-    expect(world.pipes.size).toBe(MAX_PIPES_PER_COLONY);
+    expect(world.pipes.size).toBe(MAX_OUT_PIPES_PER_COLONY);
     expect(world.canEject(me.id, parent.id, { x: 70, y: 70 })).toEqual({
       ok: false,
-      reason: "pipe limit reached",
+      reason: "output limit reached",
+    });
+  });
+
+  it("caps inputs and outputs separately", () => {
+    const { world, me } = soloWorld();
+    const hub = world.addColony(me.id, 0, 0, 500);
+    const ring = (i: number, n: number, r: number) => {
+      const a = (i / n) * Math.PI * 2 + 0.3;
+      return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+    };
+    // Fill every output…
+    for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
+      world.enqueue({ type: "eject", player: me.id, from: hub.id, ...ring(i, MAX_OUT_PIPES_PER_COLONY, 100) });
+    }
+    world.step();
+    // …and inputs are still all free.
+    const sources = Array.from({ length: MAX_IN_PIPES_PER_COLONY + 1 }, (_, i) =>
+      world.addFall(ring(i, MAX_IN_PIPES_PER_COLONY + 1, 200).x, ring(i, MAX_IN_PIPES_PER_COLONY + 1, 200).y, 500),
+    );
+    for (const s of sources.slice(0, MAX_IN_PIPES_PER_COLONY)) {
+      expect(world.canConnect(me.id, s.id, hub.id).ok).toBe(true);
+      world.enqueue({ type: "connect", player: me.id, from: s.id, to: hub.id });
+    }
+    world.step();
+    expect(world.inCount(hub.id)).toBe(MAX_IN_PIPES_PER_COLONY);
+    expect(world.outCount(hub.id)).toBe(MAX_OUT_PIPES_PER_COLONY);
+    expect(world.canConnect(me.id, sources.at(-1)!.id, hub.id)).toEqual({
+      ok: false,
+      reason: "input limit reached",
     });
   });
 

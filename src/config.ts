@@ -14,7 +14,9 @@ export const EJECT_MIN_PARENT_REMAINING = 10; // parent must keep at least this 
 
 // §6.2 Pipelines
 export const PIPE_RATE_PER_SEC = 3; // nutrients per second along one hypha
-export const MAX_PIPES_PER_COLONY = 4; // counts incoming + outgoing; falls are uncapped
+// Separate caps for hyphae flowing into and out of a colony; falls are uncapped.
+export const MAX_IN_PIPES_PER_COLONY = 4;
+export const MAX_OUT_PIPES_PER_COLONY = 4;
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
 export const WALL_BAR_LENGTH = 80;

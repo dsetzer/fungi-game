@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fungi Game</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="hud"></div>
+    <div id="banner" hidden></div>
+    <div id="help">
+      <b>Left-drag</b> from a colony: to empty space = eject, to a node = grow hypha (flows start → end)<br />
+      <b>Right-click</b> a hypha = cut it · <b>Right-drag</b> / <b>WASD</b> = pan · <b>Wheel</b> = zoom · <b>R</b> = new round
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

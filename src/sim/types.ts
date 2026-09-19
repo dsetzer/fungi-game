@@ -19,8 +19,8 @@ export interface GameNode {
   x: number;
   y: number;
   nutrients: number;
-  /** Net nutrient change applied on the last tick (for "ticks until death" UI). */
-  lastDelta: number;
+  /** Net nutrient change per second as of the last step (for "time until death" UI). */
+  rate: number;
   /** Stable per-node value for cosmetic variation (blob shape). */
   seed: number;
 }

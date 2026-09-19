@@ -1,4 +1,9 @@
-import { ARENA_RADIUS, INTERIOR_CLUSTERS } from "../config";
+import {
+  ARENA_RADIUS,
+  FALL_CLUSTER_SPREAD,
+  INTERIOR_CLUSTERS,
+  SPAWN_CLUSTER_DISTANCE,
+} from "../config";
 import { dist, makeRng, type Vec } from "./geometry";
 import type { Wall } from "./types";
 
@@ -50,7 +55,10 @@ function interiorClusters(rng: () => number, radius: number, spawns: Vec[]): Wal
     const count = 4 + Math.floor(rng() * 7);
     for (let i = 0; i < count; i++) {
       const r = 25 + rng() * 55;
-      const clearOfSpawns = spawns.every((s) => dist(s.x, s.y, x, y) > r + 180);
+      // Keep each spawn and its home fall cluster free of walls.
+      const clearOfSpawns = spawns.every(
+        (s) => dist(s.x, s.y, x, y) > r + SPAWN_CLUSTER_DISTANCE + FALL_CLUSTER_SPREAD,
+      );
       if (clearOfSpawns && Math.hypot(x, y) + r < radius) out.push({ x, y, r });
       heading += (rng() - 0.5) * 1.4;
       x += Math.cos(heading) * r * 1.1;

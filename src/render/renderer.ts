@@ -1,4 +1,4 @@
-import { EJECT_BUFFER, TICK_RATE, colonyRadius } from "../config";
+import { EJECT_BUFFER, colonyRadius } from "../config";
 import type { Input } from "../input/input";
 import type { Vec } from "../sim/geometry";
 import type { GameNode, Pipe } from "../sim/types";
@@ -140,8 +140,8 @@ export class Renderer {
 
   /** §8: make "how long until this dies" readable without clicking. */
   private drawDeathRing(n: GameNode, r: number): void {
-    if (n.lastDelta >= 0) return;
-    const seconds = n.nutrients / -n.lastDelta / TICK_RATE;
+    if (n.rate >= 0) return;
+    const seconds = n.nutrients / -n.rate;
     if (seconds > DEATH_WARN_SECONDS) return;
     const { ctx } = this;
     ctx.strokeStyle = seconds < 5 ? COLORS.invalid : COLORS.warn;

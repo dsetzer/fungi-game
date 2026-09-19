@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { EJECT_BUFFER, PIPE_RATE, UPKEEP_PER_TICK } from "../src/config";
+import { EJECT_BUFFER, PIPE_RATE_PER_SEC, SIM_HZ, UPKEEP_PER_SEC, reach } from "../src/config";
 import type { Arena } from "../src/sim/arena";
+import { dist } from "../src/sim/geometry";
 import { World } from "../src/sim/world";
 
 const openArena = (walls: Arena["walls"] = []): Arena => ({ radius: 2000, walls, spawns: [] });
@@ -11,14 +12,25 @@ function soloWorld(walls: Arena["walls"] = []) {
   return { world, me };
 }
 
+function runSeconds(world: World, seconds: number) {
+  for (let i = 0; i < Math.round(seconds * SIM_HZ); i++) world.step();
+}
+
 describe("upkeep", () => {
-  it("drains every colony by the upkeep cost each tick until it withers", () => {
+  it("costs UPKEEP_PER_SEC per second, not per sim step", () => {
     const { world, me } = soloWorld();
-    const n = world.addColony(me.id, 0, 0, 3 * UPKEEP_PER_TICK);
-    world.step();
-    expect(n.nutrients).toBe(2 * UPKEEP_PER_TICK);
-    world.step();
-    world.step();
+    const n = world.addColony(me.id, 0, 0, 100);
+    runSeconds(world, 1);
+    expect(n.nutrients).toBeCloseTo(100 - UPKEEP_PER_SEC);
+    expect(n.rate).toBeCloseTo(-UPKEEP_PER_SEC);
+  });
+
+  it("withers a colony once upkeep empties it", () => {
+    const { world, me } = soloWorld();
+    const n = world.addColony(me.id, 0, 0, 3 * UPKEEP_PER_SEC);
+    runSeconds(world, 2.5);
+    expect(world.nodes.has(n.id)).toBe(true);
+    runSeconds(world, 1);
     expect(world.nodes.has(n.id)).toBe(false);
     expect(world.ended).toBe(true);
   });
@@ -27,7 +39,7 @@ describe("upkeep", () => {
     const { world, me } = soloWorld();
     world.addColony(me.id, 0, 0, 100);
     const fall = world.addFall(300, 0, 50);
-    world.step();
+    runSeconds(world, 1);
     expect(fall.nutrients).toBe(50);
   });
 });
@@ -39,8 +51,9 @@ describe("eject", () => {
     world.enqueue({ type: "eject", player: me.id, from: parent.id, x: 100, y: 0 });
     world.step();
     const child = [...world.nodes.values()].find((n) => n !== parent)!;
-    expect(child.nutrients).toBe(EJECT_BUFFER - UPKEEP_PER_TICK);
-    expect(parent.nutrients).toBe(200 - EJECT_BUFFER - UPKEEP_PER_TICK);
+    const upkeepStep = UPKEEP_PER_SEC / SIM_HZ;
+    expect(child.nutrients).toBeCloseTo(EJECT_BUFFER - upkeepStep);
+    expect(parent.nutrients).toBeCloseTo(200 - EJECT_BUFFER - upkeepStep);
   });
 
   it("rejects targets beyond reach or behind a wall", () => {
@@ -56,14 +69,17 @@ describe("eject", () => {
 });
 
 describe("pipes", () => {
-  it("moves PIPE_RATE per tick from start to end", () => {
+  it("moves PIPE_RATE_PER_SEC per second from start to end", () => {
     const { world, me } = soloWorld();
     const a = world.addColony(me.id, 0, 0, 100);
     const b = world.addColony(me.id, 120, 0, 100);
     world.enqueue({ type: "connect", player: me.id, from: a.id, to: b.id });
-    world.step();
-    expect(a.nutrients).toBe(100 - PIPE_RATE - UPKEEP_PER_TICK);
-    expect(b.nutrients).toBe(100 + PIPE_RATE - UPKEEP_PER_TICK);
+    world.step(); // command applies on this step
+    const a0 = a.nutrients;
+    const b0 = b.nutrients;
+    runSeconds(world, 1);
+    expect(a.nutrients).toBeCloseTo(a0 - PIPE_RATE_PER_SEC - UPKEEP_PER_SEC);
+    expect(b.nutrients).toBeCloseTo(b0 + PIPE_RATE_PER_SEC - UPKEEP_PER_SEC);
   });
 
   it("allows only one pipe per pair, in either direction", () => {
@@ -75,13 +91,12 @@ describe("pipes", () => {
     expect(world.canConnect(me.id, b.id, a.id).ok).toBe(false);
   });
 
-  it("can drain a nutrient fall into an owned colony", () => {
+  it("can drain a nutrient fall into an owned colony until it's gone", () => {
     const { world, me } = soloWorld();
     const c = world.addColony(me.id, 0, 0, 100);
-    const fall = world.addFall(150, 0, 2 * PIPE_RATE);
+    const fall = world.addFall(150, 0, 2 * PIPE_RATE_PER_SEC);
     world.enqueue({ type: "connect", player: me.id, from: fall.id, to: c.id });
-    world.step();
-    world.step();
+    runSeconds(world, 2.5);
     expect(world.nodes.has(fall.id)).toBe(false);
     expect(world.pipes.size).toBe(0);
   });
@@ -93,8 +108,8 @@ describe("pipes", () => {
     const fall = world.addFall(0, 0, 10);
     world.enqueue({ type: "connect", player: me.id, from: a.id, to: fall.id });
     world.enqueue({ type: "connect", player: me.id, from: fall.id, to: b.id });
-    for (let i = 0; i < 20; i++) world.step();
-    expect(fall.nutrients).toBe(10);
+    runSeconds(world, 20);
+    expect(fall.nutrients).toBeCloseTo(10);
   });
 
   it("cannot connect two nodes neither of which you own", () => {
@@ -113,7 +128,7 @@ describe("match", () => {
     const a = world.addPlayer("a", false);
     const b = world.addPlayer("b", true);
     world.addColony(a.id, 0, 0, 100);
-    world.addColony(b.id, 500, 0, 1);
+    world.addColony(b.id, 500, 0, 0.05);
     world.step();
     expect(world.ended).toBe(true);
     expect(world.winner).toBe(a.id);
@@ -127,5 +142,22 @@ describe("match", () => {
       [...w2.nodes.values()].map((n) => [n.x, n.y]),
     );
     expect(w1.players.length).toBeGreaterThan(1);
+  });
+
+  it("gives every spawn a fall in starting reach and a richer one just beyond", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const world = World.createMatch(seed);
+      const falls = [...world.nodes.values()].filter((n) => n.kind === "fall");
+      for (const home of [...world.nodes.values()].filter((n) => n.kind === "colony")) {
+        const startReach = reach(home.nutrients);
+        const inReach = falls.filter(
+          (f) => dist(home.x, home.y, f.x, f.y) <= startReach && world.hasLineOfSight(home, f),
+        );
+        expect(inReach.length, `seed ${seed} player ${home.owner}`).toBeGreaterThan(0);
+        const bestInReach = Math.max(...inReach.map((f) => f.nutrients));
+        const nearby = falls.filter((f) => dist(home.x, home.y, f.x, f.y) <= startReach * 1.6);
+        expect(Math.max(...nearby.map((f) => f.nutrients))).toBeGreaterThan(bestInReach);
+      }
+    }
   });
 });

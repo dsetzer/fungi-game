@@ -378,25 +378,28 @@ export class World {
     for (const p of this.pipes.values()) outCount.set(p.from, (outCount.get(p.from) ?? 0) + 1);
 
     const inflow = new Map<EntityId, number>();
-    const outflow = new Map<EntityId, number>();
+    const drained = new Set<EntityId>(); // couldn't cover its outgoing demand this step
     const perStep = PIPE_RATE_PER_SEC * DT;
+    const demand = (id: EntityId) => perStep * (outCount.get(id) ?? 0);
     for (const p of this.pipes.values()) {
       const src = this.nodes.get(p.from)!;
-      const wanted = perStep * outCount.get(p.from)!;
-      const amount = perStep * Math.min(1, Math.max(0, src.nutrients) / wanted);
+      const wanted = demand(p.from);
+      const share = Math.min(1, Math.max(0, src.nutrients) / wanted);
+      if (share < 1) drained.add(p.from);
+      const amount = perStep * share;
       add(p.from, -amount);
       add(p.to, amount);
-      outflow.set(p.from, (outflow.get(p.from) ?? 0) + amount);
       inflow.set(p.to, (inflow.get(p.to) ?? 0) + amount);
     }
 
     // Upkeep is only charged to nodes that aren't sustained. A node is sustained
-    // while nutrients flow into it and it isn't sending out more than it receives.
+    // while nutrients flow into it and its hyphae don't demand more than it
+    // receives. Judged on demand, not on what a nearly-empty node managed to send.
     const EPS = 1e-9;
     for (const n of this.nodes.values()) {
       if (n.kind !== "colony" && !FALLS_PAY_UPKEEP) continue;
       const inAmt = inflow.get(n.id) ?? 0;
-      const sustained = inAmt > EPS && inAmt + EPS >= (outflow.get(n.id) ?? 0);
+      const sustained = inAmt > EPS && inAmt + EPS >= demand(n.id);
       if (!sustained) add(n.id, -UPKEEP_PER_SEC * DT);
     }
 
@@ -404,6 +407,9 @@ export class World {
       const d = delta.get(n.id) ?? 0;
       n.nutrients += d;
       n.rate = d / DT;
+      // Ran dry while being drained faster than it's fed: it's empty now, even
+      // though this step's inflow landed after it gave everything away.
+      if (drained.has(n.id) && (inflow.get(n.id) ?? 0) + EPS < demand(n.id)) n.nutrients = 0;
     }
   }
 

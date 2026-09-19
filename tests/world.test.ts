@@ -60,6 +60,39 @@ describe("upkeep", () => {
     expect(home.nutrients).toBeCloseTo(h0 + 30 * PIPE_RATE_PER_SEC);
   });
 
+  it("destroys a node drained to 0 even while it's still being fed", () => {
+    const { world, me } = soloWorld();
+    const rival = world.addPlayer("rival", true);
+    const fall = world.addFall(-80, 0, 500); // within the victim's small reach
+    const victim = world.addColony(me.id, 0, 0, 5);
+    const r1 = world.addColony(rival.id, 120, 0, 100);
+    const r2 = world.addColony(rival.id, 0, 120, 100);
+    // Fed at 3/s, drained at 6/s by two rival hyphae.
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: victim.id });
+    world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: r1.id });
+    world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: r2.id });
+    world.step();
+    expect(world.pipes.size).toBe(3);
+    runSeconds(world, 10);
+    expect(world.nodes.has(victim.id)).toBe(false);
+    expect([...world.pipes.values()].some((p) => p.from === victim.id || p.to === victim.id)).toBe(false);
+  });
+
+  it("keeps a nearly-empty relay alive while its inflow still covers its outflow", () => {
+    const { world, me } = soloWorld();
+    // Close together: an almost-empty relay has very little reach of its own.
+    const fall = world.addFall(-70, 0, 500);
+    const relay = world.addColony(me.id, 0, 0, 0.05);
+    const home = world.addColony(me.id, 70, 0, 100);
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: relay.id });
+    world.enqueue({ type: "connect", player: me.id, from: relay.id, to: home.id });
+    world.step();
+    expect(world.pipes.size).toBe(2);
+    runSeconds(world, 10);
+    expect(world.nodes.has(relay.id)).toBe(true);
+    expect(relay.nutrients).toBeGreaterThan(0);
+  });
+
   it("charges upkeep when a colony sends out more than it receives", () => {
     const { world, me } = soloWorld();
     const fall = world.addFall(-120, 0, 500);

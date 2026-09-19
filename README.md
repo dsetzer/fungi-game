@@ -53,7 +53,7 @@ These are placeholders. Change them in `config.ts` / `world.ts`:
 - **Walls:** 15 nutrients each, max 3 per colony, fixed 80-unit crossbar; a new crossbar severs hyphae crossing it.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained (sustained = has inflow and isn't sending out more than it receives).
 - **Falls pay upkeep:** no (`FALLS_PAY_UPKEEP = false`).
-- **Pipe caps:** separate limits per colony — 4 incoming and 4 outgoing; falls are uncapped so funnelling works.
+- **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so funnelling and reinforcement always work. Falls are uncapped.
 - **Reach when draining:** uses the reach of the endpoint(s) you own.
 - **Cutting:** you can cut any hypha touching one of your nodes, including one draining you.
 - **Line of sight:** checked when a hypha is grown; a new crossbar cuts any hypha already crossing it.

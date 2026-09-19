@@ -8,7 +8,6 @@ import {
   FALL_POOL_CENTER,
   FALL_POOL_EDGE,
   FALLS_PAY_UPKEEP,
-  MAX_IN_PIPES_PER_COLONY,
   MAX_OUT_PIPES_PER_COLONY,
   NEUTRAL_FALL_CLUSTERS,
   PIPE_RATE_PER_SEC,
@@ -262,9 +261,6 @@ export class World {
     if (this.pipeBetween(fromId, toId)) return NO("already connected");
     if (from.kind === "colony" && this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) {
       return NO("output limit reached");
-    }
-    if (to.kind === "colony" && this.inCount(toId) >= MAX_IN_PIPES_PER_COLONY) {
-      return NO("input limit reached");
     }
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");

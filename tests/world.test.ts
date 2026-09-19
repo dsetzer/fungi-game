@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   EJECT_BUFFER,
-  MAX_IN_PIPES_PER_COLONY,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   PIPE_RATE_PER_SEC,
@@ -161,7 +160,7 @@ describe("eject", () => {
     });
   });
 
-  it("caps inputs and outputs separately", () => {
+  it("caps outputs but accepts any number of inputs", () => {
     const { world, me } = soloWorld();
     const hub = world.addColony(me.id, 0, 0, 500);
     const ring = (i: number, n: number, r: number) => {
@@ -173,21 +172,17 @@ describe("eject", () => {
       world.enqueue({ type: "eject", player: me.id, from: hub.id, ...ring(i, MAX_OUT_PIPES_PER_COLONY, 100) });
     }
     world.step();
-    // …and inputs are still all free.
-    const sources = Array.from({ length: MAX_IN_PIPES_PER_COLONY + 1 }, (_, i) =>
-      world.addFall(ring(i, MAX_IN_PIPES_PER_COLONY + 1, 200).x, ring(i, MAX_IN_PIPES_PER_COLONY + 1, 200).y, 500),
-    );
-    for (const s of sources.slice(0, MAX_IN_PIPES_PER_COLONY)) {
-      expect(world.canConnect(me.id, s.id, hub.id).ok).toBe(true);
-      world.enqueue({ type: "connect", player: me.id, from: s.id, to: hub.id });
+    expect(world.canEject(me.id, hub.id, { x: 0, y: -60 }).ok).toBe(false);
+    // …and it still takes in as many feeds as you bring it.
+    const feeds = 10;
+    for (let i = 0; i < feeds; i++) {
+      const p = ring(i, feeds, 200);
+      const fall = world.addFall(p.x, p.y, 500);
+      world.enqueue({ type: "connect", player: me.id, from: fall.id, to: hub.id });
     }
     world.step();
-    expect(world.inCount(hub.id)).toBe(MAX_IN_PIPES_PER_COLONY);
+    expect(world.inCount(hub.id)).toBe(feeds);
     expect(world.outCount(hub.id)).toBe(MAX_OUT_PIPES_PER_COLONY);
-    expect(world.canConnect(me.id, sources.at(-1)!.id, hub.id)).toEqual({
-      ok: false,
-      reason: "input limit reached",
-    });
   });
 
   it("rejects targets beyond reach or behind a wall", () => {

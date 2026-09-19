@@ -81,7 +81,7 @@ Dragging from one node to another grows a hypha/pipeline that continuously moves
 
 - **Only one pipeline can exist between any given pair of nodes.** You can't stack multiple pipelines on the same connection to move more resources through it.
 - **This means throughput scales with node count, not pipeline count on a single link.** To move nutrients faster between two areas, you build more nodes and more parallel pipelines between them — the network's total bandwidth is a function of how many distinct paths you've built, not how many times you've connected the same two points.
-- **Each node can host multiple pipelines, with separate caps for incoming and outgoing** — a node full of outputs can still accept inputs and vice versa (exact caps TBD — see Section 9; prototype uses 4 each). Falls are uncapped.
+- **Only outgoing pipelines are capped** (prototype: 4 per node); a node can accept any number of incoming pipelines, so funnelling and reinforcing a node under attack always work. Falls are uncapped. Drains out of a node use that node's outputs, so a node can be drained by at most that many pipelines at once — and an attacker who fills them also chokes the owner's ability to expand from it.
 - **Pipeline reach is resource-dependent**, same as ejection range (Section 5) — a richer node can reach further.
 - **Line-of-sight matters:** a pipeline can only form (and, presumably, only persists) along an unobstructed straight line between the two node centers — walls block it (Section 4).
 

@@ -1,17 +1,17 @@
-import { EJECT_BUFFER, colonyRadius } from "../config";
+import { NODE_CORE_RADIUS } from "../config";
 import type { Input } from "../input/input";
 import type { Vec } from "../sim/geometry";
 import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
+import { TerritoryLayer } from "./territory";
 
 const COLORS = {
   outside: "#e9ecef",
   wallEdge: "#d6dbe0",
   wallFill: "#eef0f3",
   floor: "#ffffff",
-  fall: "#9c6b3f",
-  fallSpeck: "#6f4a2a",
+  fallCore: "#a3a3aa",
   valid: "#2f9e44",
   invalid: "#e03131",
   warn: "#f08c00",
@@ -21,6 +21,7 @@ const DEATH_WARN_SECONDS = 20;
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
+  private territory = new TerritoryLayer();
 
   constructor(private canvas: HTMLCanvasElement, private camera: Camera) {
     this.ctx = canvas.getContext("2d")!;
@@ -47,14 +48,17 @@ export class Renderer {
     ctx.scale(camera.zoom, camera.zoom);
     ctx.translate(-camera.x, -camera.y);
 
-    this.drawArena(world);
+    this.drawFloor(world);
+    this.drawAuras(world, timeMs);
+    this.drawTerrain(world);
     for (const b of world.barriers.values()) {
       const color = world.player(b.owner)?.color ?? "#888";
       const anchor = world.nodes.get(b.anchor)!;
       this.drawWall(anchor, b, b.a, b.b, color, b.id === input.hoverWall ? 1 : 0.8);
     }
     for (const p of world.pipes.values()) this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
-    for (const n of world.nodes.values()) this.drawNode(world, n, timeMs);
+    const hovered = input.nodeAt(input.cursor);
+    for (const n of world.nodes.values()) this.drawNode(world, n, n === hovered);
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
   }
@@ -111,13 +115,17 @@ export class Renderer {
     ctx.fillText(reason, at.x + 12 / this.camera.zoom, at.y - 8 / this.camera.zoom);
   }
 
-  private drawArena(world: World): void {
+  private drawFloor(world: World): void {
     const { ctx } = this;
     ctx.fillStyle = COLORS.floor;
     ctx.beginPath();
     ctx.arc(0, 0, world.arena.radius, 0, Math.PI * 2);
     ctx.fill();
+  }
 
+  /** Drawn over the auras so terrain visibly occludes territory. */
+  private drawTerrain(world: World): void {
+    const { ctx } = this;
     // Two passes (slightly larger darker circles underneath) give the merged
     // clusters a single soft outline, like a cloud.
     for (const [pad, color] of [[3, COLORS.wallEdge], [0, COLORS.wallFill]] as const) {
@@ -161,39 +169,35 @@ export class Renderer {
     }
   }
 
-  private drawNode(world: World, n: GameNode, timeMs: number): void {
-    const { ctx, camera } = this;
+  /** A node is just a point: a fixed-size dot. Its size lives in the aura. */
+  private drawNode(world: World, n: GameNode, hovered: boolean): void {
+    const { ctx } = this;
     const r = world.radiusOf(n);
+    ctx.fillStyle = n.kind === "fall" ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (n.kind === "colony") this.drawDeathRing(n, r);
 
-    blobPath(ctx, n, r, timeMs);
-    if (n.kind === "fall") {
-      ctx.fillStyle = COLORS.fall;
-      ctx.fill();
-      ctx.fillStyle = COLORS.fallSpeck;
-      for (let i = 0; i < 6; i++) {
-        const a = n.seed * 7 + i * 2.1;
-        const d = r * 0.55 * ((i * 0.37 + n.seed) % 1);
-        ctx.beginPath();
-        ctx.arc(n.x + Math.cos(a) * d, n.y + Math.sin(a) * d, r * 0.09, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      const color = world.player(n.owner)?.color ?? "#888";
-      ctx.fillStyle = color + "55";
-      ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      this.drawDeathRing(n, r);
-    }
-
-    if (r * camera.zoom > 14) {
-      ctx.fillStyle = n.kind === "fall" ? "#fff" : "#222";
-      ctx.font = `${Math.max(10, r * 0.55)}px system-ui, sans-serif`;
-      ctx.textAlign = "center";
+    if (hovered) {
+      ctx.fillStyle = "#222";
+      ctx.font = `${13 / this.camera.zoom}px system-ui, sans-serif`;
+      ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(Math.floor(n.nutrients)), n.x, n.y);
+      ctx.fillText(String(Math.floor(n.nutrients)), n.x + r + 6 / this.camera.zoom, n.y);
     }
+  }
+
+  /** Fluid areas (metaballs), rendered in screen space and composited here. */
+  private drawAuras(world: World, timeMs: number): void {
+    const { ctx, camera } = this;
+    const layer = this.territory.render(world, camera, timeMs);
+    ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(layer, 0, 0, camera.width, camera.height);
+    ctx.restore();
   }
 
   /** §8: make "how long until this dies" readable without clicking. */
@@ -203,9 +207,9 @@ export class Renderer {
     if (seconds > DEATH_WARN_SECONDS) return;
     const { ctx } = this;
     ctx.strokeStyle = seconds < 5 ? COLORS.invalid : COLORS.warn;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(n.x, n.y, r + 6, -Math.PI / 2, -Math.PI / 2 + (seconds / DEATH_WARN_SECONDS) * Math.PI * 2);
+    ctx.arc(n.x, n.y, r + 5, -Math.PI / 2, -Math.PI / 2 + (seconds / DEATH_WARN_SECONDS) * Math.PI * 2);
     ctx.stroke();
   }
 
@@ -237,31 +241,11 @@ export class Renderer {
 
     if (!target) {
       ctx.beginPath();
-      ctx.arc(end.x, end.y, colonyRadius(EJECT_BUFFER), 0, Math.PI * 2);
+      ctx.arc(end.x, end.y, NODE_CORE_RADIUS, 0, Math.PI * 2);
       ctx.stroke();
     }
     if (!check.ok) this.drawReason(check.reason, end);
   }
-}
-
-/** Soft, slightly wobbling outline instead of a perfect circle (§8). */
-function blobPath(ctx: CanvasRenderingContext2D, n: GameNode, r: number, timeMs: number): void {
-  const points = 24;
-  const t = timeMs / 1000;
-  ctx.beginPath();
-  for (let i = 0; i <= points; i++) {
-    const a = (i / points) * Math.PI * 2;
-    const k =
-      1 +
-      0.06 * Math.sin(3 * a + n.seed) +
-      0.04 * Math.sin(5 * a + n.seed * 2) +
-      0.025 * Math.sin(7 * a + t * 0.8 + n.seed);
-    const x = n.x + Math.cos(a) * r * k;
-    const y = n.y + Math.sin(a) * r * k;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
 }
 
 /** Deterministic sideways bend so hyphae look organic rather than ruled. */

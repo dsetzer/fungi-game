@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EJECT_BUFFER,
+  MAX_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   PIPE_RATE_PER_SEC,
   SIM_HZ,
@@ -85,15 +86,45 @@ describe("upkeep", () => {
 });
 
 describe("eject", () => {
-  it("moves the buffer from parent to a new colony", () => {
+  it("moves the buffer to a new colony and auto-connects parent → child", () => {
     const { world, me } = soloWorld();
     const parent = world.addColony(me.id, 0, 0, 200);
     world.enqueue({ type: "eject", player: me.id, from: parent.id, x: 100, y: 0 });
     world.step();
     const child = [...world.nodes.values()].find((n) => n !== parent)!;
+    expect([...world.pipes.values()]).toMatchObject([{ from: parent.id, to: child.id }]);
+    // Child is fed from the first step, so it's sustained and pays no upkeep.
+    const pipeStep = PIPE_RATE_PER_SEC / SIM_HZ;
     const upkeepStep = UPKEEP_PER_SEC / SIM_HZ;
-    expect(child.nutrients).toBeCloseTo(EJECT_BUFFER - upkeepStep);
-    expect(parent.nutrients).toBeCloseTo(200 - EJECT_BUFFER - upkeepStep);
+    expect(child.nutrients).toBeCloseTo(EJECT_BUFFER + pipeStep);
+    expect(parent.nutrients).toBeCloseTo(200 - EJECT_BUFFER - pipeStep - upkeepStep);
+  });
+
+  it("still connects a child ejected at max reach, even though paying for it shrinks the parent's reach", () => {
+    const { world, me } = soloWorld();
+    const parent = world.addColony(me.id, 0, 0, 100);
+    const edge = world.reachOf(parent) - 1;
+    world.enqueue({ type: "eject", player: me.id, from: parent.id, x: edge, y: 0 });
+    world.step();
+    expect(world.reachOf(parent)).toBeLessThan(edge); // a separate connect would now fail…
+    expect(world.pipes.size).toBe(1); // …but the auto-connect already happened
+    runSeconds(world, 5);
+    expect(world.pipes.size).toBe(1);
+  });
+
+  it("can't eject when the parent has no free hypha slot", () => {
+    const { world, me } = soloWorld();
+    const parent = world.addColony(me.id, 0, 0, 500);
+    for (let i = 0; i < MAX_PIPES_PER_COLONY; i++) {
+      const a = (i / MAX_PIPES_PER_COLONY) * Math.PI * 2;
+      world.enqueue({ type: "eject", player: me.id, from: parent.id, x: Math.cos(a) * 100, y: Math.sin(a) * 100 });
+    }
+    world.step();
+    expect(world.pipes.size).toBe(MAX_PIPES_PER_COLONY);
+    expect(world.canEject(me.id, parent.id, { x: 70, y: 70 })).toEqual({
+      ok: false,
+      reason: "pipe limit reached",
+    });
   });
 
   it("rejects targets beyond reach or behind a wall", () => {

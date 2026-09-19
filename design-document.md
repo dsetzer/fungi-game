@@ -73,7 +73,7 @@ Critically, the node you *start* the drag on doesn't have to be one you own — 
 
 ### 6.1 Ejecting — Growing a New Node
 
-Dragging from an existing node of yours out to empty space plants a new node there, seeded with a small starting nutrient buffer drawn from the parent. That new node is immediately on the clock (Section 5) — it needs a pipeline before its buffer runs out, or it disappears. Ejection range is limited by the parent node's current resources (Section 5).
+Dragging from an existing node of yours out to empty space plants a new node there, seeded with a small starting nutrient buffer drawn from the parent, and **automatically grows a pipeline from the parent to the child** — no second drag needed. The parent therefore needs a free pipeline slot to eject. Because reach is checked before the buffer is paid, a child planted at maximum range is still connected even though paying for it shrinks the parent's reach. Ejection range is limited by the parent node's current resources (Section 5).
 
 ### 6.2 Pipelines — Persistent, Directional, One-Per-Pair
 
@@ -133,6 +133,7 @@ The combination of per-tick upkeep, resource-gated range, one-pipeline-per-pair,
 
 ## 8. Visual & UX Direction
 
+- **Nodes are points, not growing blobs** *(confirmed from the original)*: every node is a fixed-size dot. Its size is shown by a translucent **fluid area** around the dot that grows with its nutrients. Areas of the same owner attract each other and merge into one contiguous shape (metaball-style), so a network reads as a single organism; different owners' areas overlap translucently. Nutrient falls use the same treatment in neutral grey.
 - **Palette:** plain white background; the only geometry is the circle-cluster walls/boundary and the colonies/pipelines themselves. This restraint is a feature, not a placeholder — it keeps the readability of the network (who's connected to what, and in which direction) as the star of the screen.
 - **Readability priorities, in order:** (1) whose colony is whose, (2) pipeline direction and what's flowing through it, (3) terrain/chokepoints, (4) everything else (UI chrome, effects).
 - **Node health at a glance:** since upkeep constantly threatens every node, the UI should make "how many ticks until this thing dies" legible without requiring a click — e.g. a shrinking silhouette or a subtle depletion ring, so players can triage their network visually mid-fight.

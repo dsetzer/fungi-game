@@ -19,8 +19,10 @@ import {
   WALL_BAR_LENGTH,
   WALL_COST,
   WALLS_CUT_EXISTING_PIPES,
-  colonyRadius,
-  fallRadius,
+  NODE_CORE_RADIUS,
+  NODE_SPACING,
+  colonyAura,
+  fallAura,
   reach,
 } from "../config";
 import { generateArena, type Arena } from "./arena";
@@ -138,7 +140,7 @@ export class World {
       };
       const jitter = 0.8 + this.rng() * 0.4;
       const pool = Math.round((FALL_POOL_CENTER + (FALL_POOL_EDGE - FALL_POOL_CENTER) * t) * jitter);
-      if (this.isFreeSpot(p, fallRadius(pool) + 6)) placed.push(this.addFall(p.x, p.y, pool));
+      if (this.isFreeSpot(p, NODE_SPACING)) placed.push(this.addFall(p.x, p.y, pool));
     }
     return placed;
   }
@@ -151,7 +153,7 @@ export class World {
       const c = { x: Math.cos(a) * d, y: Math.sin(a) * d };
       // Keep neutral clusters away from spawns so each player's home cluster is theirs.
       const nearSpawn = this.arena.spawns.some((s) => dist(s.x, s.y, c.x, c.y) < 500);
-      if (!nearSpawn && this.isFreeSpot(c, fallRadius(FALL_POOL_CENTER) + 6)) {
+      if (!nearSpawn && this.isFreeSpot(c, NODE_SPACING * 2)) {
         this.addFallCluster(c);
         placed++;
       }
@@ -164,8 +166,14 @@ export class World {
     return id == null ? undefined : this.players[id - 1];
   }
 
-  radiusOf(n: GameNode): number {
-    return n.kind === "fall" ? fallRadius(n.nutrients) : colonyRadius(n.nutrients);
+  /** Nodes are points; this is the fixed core used for hit-testing and spacing. */
+  radiusOf(_n: GameNode): number {
+    return NODE_CORE_RADIUS;
+  }
+
+  /** Visual size of the fluid area around a node — grows with its nutrients. */
+  auraOf(n: GameNode): number {
+    return n.kind === "fall" ? fallAura(n.nutrients) : colonyAura(n.nutrients);
   }
 
   reachOf(n: GameNode): number {
@@ -228,8 +236,10 @@ export class World {
     const from = this.nodes.get(fromId);
     if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
     if (from.nutrients - EJECT_BUFFER < EJECT_MIN_PARENT_REMAINING) return NO("too weak to eject");
+    // Ejecting auto-grows a hypha parent → child, so the parent needs a free slot.
+    if (this.pipeCount(fromId) >= MAX_PIPES_PER_COLONY) return NO("pipe limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
-    if (!this.isFreeSpot(target, colonyRadius(EJECT_BUFFER))) return NO("blocked");
+    if (!this.isFreeSpot(target, NODE_SPACING)) return NO("blocked");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
     return YES;
   }
@@ -297,13 +307,14 @@ export class World {
       case "eject": {
         if (!this.canEject(cmd.player, cmd.from, cmd).ok) return;
         this.nodes.get(cmd.from)!.nutrients -= EJECT_BUFFER;
-        this.addColony(cmd.player, cmd.x, cmd.y, EJECT_BUFFER);
+        const child = this.addColony(cmd.player, cmd.x, cmd.y, EJECT_BUFFER);
+        this.addPipe(cmd.from, child.id, cmd.player);
         return;
       }
       case "connect": {
-        if (!this.canConnect(cmd.player, cmd.from, cmd.to).ok) return;
-        const id = this.nextId++;
-        this.pipes.set(id, { id, from: cmd.from, to: cmd.to, owner: cmd.player });
+        if (this.canConnect(cmd.player, cmd.from, cmd.to).ok) {
+          this.addPipe(cmd.from, cmd.to, cmd.player);
+        }
         return;
       }
       case "cut": {
@@ -326,6 +337,12 @@ export class World {
         return;
       }
     }
+  }
+
+  private addPipe(from: EntityId, to: EntityId, owner: PlayerId): Pipe {
+    const pipe: Pipe = { id: this.nextId++, from, to, owner };
+    this.pipes.set(pipe.id, pipe);
+    return pipe;
   }
 
   private cutPipesCrossing(bar: Barrier): void {

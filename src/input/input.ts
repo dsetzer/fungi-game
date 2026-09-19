@@ -70,7 +70,8 @@ export class Input {
 
   nodeAt(p: Vec): GameNode | undefined {
     const world = this.getWorld();
-    const slop = 6 / this.camera.zoom;
+    // Cores are small dots, so be generous with the click target.
+    const slop = 10 / this.camera.zoom;
     let best: GameNode | undefined;
     let bestD = Infinity;
     for (const n of world.nodes.values()) {

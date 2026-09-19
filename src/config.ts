@@ -41,13 +41,18 @@ export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
 export const BOT_THINK_SECONDS = 1;
 export const ROUND_RESTART_DELAY_MS = 4000;
 
-// Derived curves: size / reach as a function of stored nutrients.
-export function colonyRadius(nutrients: number): number {
-  return Math.min(60, 6 + Math.sqrt(Math.max(0, nutrients)) * 1.1);
+// Nodes are points: a fixed-size core dot (used for hit-testing and spacing).
+export const NODE_CORE_RADIUS = 7;
+export const NODE_SPACING = 22; // min clearance between a new node and existing cores
+
+// Visual only: the fluid "aura" around each core grows with stored nutrients.
+// Auras of the same owner merge into one contiguous shape (metaballs).
+export function colonyAura(nutrients: number): number {
+  return 18 + Math.sqrt(Math.max(0, nutrients)) * 3.5;
 }
 
-export function fallRadius(nutrients: number): number {
-  return 8 + Math.sqrt(Math.max(0, nutrients)) * 0.7;
+export function fallAura(nutrients: number): number {
+  return 10 + Math.sqrt(Math.max(0, nutrients)) * 1.5;
 }
 
 export function reach(nutrients: number): number {

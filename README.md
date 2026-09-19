@@ -15,7 +15,7 @@ npm run build      # typecheck + production build into dist/
 
 | Input | Action |
 |---|---|
-| Left-drag from a node → empty space | Eject a new colony (§6.1) |
+| Left-drag from a node → empty space | Eject a new colony, auto-connected by a hypha from its parent (§6.1) |
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (§6.2–6.3) |
 | Right-drag from your colony | Build a wall (⊢): crossbar at release point blocks line of sight (§6.5) |
 | Right-click your wall / a hypha | Demolish it / cut it |
@@ -36,6 +36,7 @@ src/
     geometry.ts      segment/circle math, seeded RNG
     types.ts         entities + Command union
   render/            Canvas 2D renderer + camera
+    territory.ts     metaball "fluid" auras (WebGL2 shader, CPU fallback)
   input/             mouse/keyboard → Commands
   main.ts            fixed-timestep loop, HUD, round restart
 tests/               vitest specs for the sim

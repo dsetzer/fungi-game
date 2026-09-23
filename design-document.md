@@ -126,8 +126,8 @@ The combination of per-tick upkeep, resource-gated range, one-pipeline-per-pair,
 1. Players drop into a freshly generated arena, each spawning as a lone node with starting nutrients.
 2. Players expand (6.1), wire up their economy (6.2), and contest nutrient falls and each other (6.3–6.4) in real time, all while every node they own bleeds upkeep (Section 5).
 3. A node dies when its nutrient pool is driven to zero, whether by upkeep alone, being outpaced by a rival's drain, or simple neglect.
-4. A player is eliminated once their entire network of nodes is gone.
-5. The round ends when a single player's network is the last one standing.
+4. A player is eliminated once their entire network of nodes is gone — in multiplayer they respawn immediately instead (see below).
+5. The round ends when a single player's network is the last one standing *(solo/offline play only — multiplayer rounds end on the timer below)*.
 6. The arena is discarded and regenerated for the next round.
 
 **Implemented round system (multiplayer):** because players join and respawn instantly (below), `last network standing` cannot end a round, so rounds run on a **timer** (prototype: 10 minutes) and the winner is whoever **gathered the most** — score counts every nutrient drawn into your network from a fall or a rival, which is what the original's millions-high leaderboard implies. Between rounds there is a short intermission, then the arena is regenerated.

@@ -4,6 +4,7 @@ import {
   FALL_DRAIN_GAIN,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
+  NODE_SPACING,
   PIPE_RATE_PER_SEC,
   SIM_HZ,
   UPKEEP_PER_SEC,
@@ -358,6 +359,31 @@ describe("match", () => {
       [...w2.nodes.values()].map((n) => [n.x, n.y]),
     );
     expect(w1.players.length).toBeGreaterThan(1);
+  });
+
+  it("leaves no open ground cut off from the main cave", () => {
+    for (let seed = 1; seed <= 8; seed++) {
+      const world = World.createMatch(seed);
+      const { arena } = world;
+      // Sample the map on a grid; every spot a colony could physically occupy
+      // must be reachable from the main cave system.
+      const step = 120;
+      const orphans: string[] = [];
+      for (let y = -arena.radius; y <= arena.radius; y += step) {
+        for (let x = -arena.radius; x <= arena.radius; x += step) {
+          const p = { x, y };
+          if (Math.hypot(x, y) > arena.radius - step) continue;
+          if (arena.index.discBlocks(p, NODE_SPACING)) continue; // solid rock
+          // Ignore crevices between wall circles (< 90 units of clear space, i.e.
+          // under one terrain cell). They sit against open caves and can still be
+          // ejected into by line of sight; only real rooms must be connected.
+          if (arena.index.discBlocks(p, 90)) continue;
+          if (!arena.isReachable(p)) orphans.push(`${x},${y}`);
+        }
+      }
+      expect(orphans.slice(0, 5), `seed ${seed}`).toEqual([]);
+      for (const s of arena.spawns) expect(arena.isReachable(s), `seed ${seed} spawn`).toBe(true);
+    }
   });
 
   it("gives every spawn a fall in starting reach and a richer one just beyond", () => {

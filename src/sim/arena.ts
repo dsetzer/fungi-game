@@ -1,5 +1,6 @@
 import {
   ARENA_RADIUS,
+  NODE_SPACING,
   SPAWN_CLEAR_RADIUS,
   TERRAIN_CELL,
   TERRAIN_FILL,
@@ -14,26 +15,37 @@ export interface Arena {
   spawns: Vec[];
   /** Spatial index over `walls` — line-of-sight and placement queries go through it. */
   index: WallIndex;
-  /** False for open ground cut off from the main cave system (and for solid rock). */
+  /** False for solid rock and for any open ground still cut off from the main cave. */
   isReachable(p: Vec): boolean;
 }
+
+/** A pocket smaller than this is filled in rather than connected. */
+const MIN_POCKET_CELLS = 4;
+/** Carved connections are this many cells either side of the path (3 cells wide). */
+const CARVE_RADIUS = 1;
 
 /**
  * Terrain (§4) as a cellular-automata cave system: open rooms joined by narrow
  * chokepoints, with pockets that take probing to find. Wall cells become jittered
  * circles so the silhouette keeps the soft cloud look.
+ *
+ * Passability is judged against the actual wall circles, not the raw grid: a
+ * one-cell gap is sealed by the circles either side of it, so treating it as open
+ * would leave pockets nothing can reach. Anything still cut off afterwards is
+ * either connected by a carved crack or filled in.
  */
 export function generateArena(seed: number, playerCount: number): Arena {
   const rng = makeRng(seed);
   const radius = ARENA_RADIUS;
   const cs = TERRAIN_CELL;
   const n = Math.ceil((radius * 2) / cs) + 2;
-  const origin = -radius - cs; // world position of cell (0,0)
+  const origin = -radius - cs;
   const toCell = (v: number) => Math.floor((v - origin) / cs);
   const toWorld = (i: number) => origin + (i + 0.5) * cs;
   const at = (x: number, y: number) => y * n + x;
+  const inGrid = (x: number, y: number) => x >= 0 && y >= 0 && x < n && y < n;
+  const isRock = (x: number, y: number) => Math.hypot(toWorld(x), toWorld(y)) > radius - cs;
 
-  // Spawns sit on a ring, with terrain carved open around them so nobody starts boxed in.
   const spawns: Vec[] = [];
   const spawnDist = radius * 0.66;
   const spawnOffset = rng() * Math.PI * 2;
@@ -46,47 +58,44 @@ export function generateArena(seed: number, playerCount: number): Arena {
   const protectedCell = new Uint8Array(n * n);
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
-      const wx = toWorld(x);
-      const wy = toWorld(y);
-      const d = Math.hypot(wx, wy);
-      if (d > radius - cs) {
+      if (isRock(x, y)) {
         solid[at(x, y)] = 1; // outer boundary
         continue;
       }
-      // Keep a clear bubble around each spawn.
+      const wx = toWorld(x);
+      const wy = toWorld(y);
       if (spawns.some((s) => Math.hypot(s.x - wx, s.y - wy) < SPAWN_CLEAR_RADIUS)) {
-        protectedCell[at(x, y)] = 1;
+        protectedCell[at(x, y)] = 1; // clear bubble around each spawn
         continue;
       }
       solid[at(x, y)] = rng() < TERRAIN_FILL ? 1 : 0;
     }
   }
 
-  // A wandering artery from each spawn to the middle. Guarantees every player can
-  // reach the rest of the map, and gives the cave system its through-routes.
+  // A wandering artery from each spawn to the middle, so the map has through-routes.
   for (const s of spawns) {
     const steps = 60;
     let drift = 0;
+    const nx = s.y;
+    const ny = -s.x;
+    const len = Math.hypot(nx, ny) || 1;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       drift += (rng() - 0.5) * cs * 2.2;
-      const nx = -(0 - s.y);
-      const ny = 0 - s.x;
-      const len = Math.hypot(nx, ny) || 1;
-      const px = s.x + (0 - s.x) * t + (nx / len) * drift * Math.sin(t * Math.PI);
-      const py = s.y + (0 - s.y) * t + (ny / len) * drift * Math.sin(t * Math.PI);
-      const cx = toCell(px);
-      const cy = toCell(py);
-      const rad = 1; // cells either side → a corridor ~3 cells wide
-      for (let dy = -rad; dy <= rad; dy++) {
-        for (let dx = -rad; dx <= rad; dx++) {
-          const gx = cx + dx;
-          const gy = cy + dy;
-          if (gx < 1 || gy < 1 || gx >= n - 1 || gy >= n - 1) continue;
-          if (Math.hypot(toWorld(gx), toWorld(gy)) > radius - cs * 2) continue;
-          protectedCell[at(gx, gy)] = 1;
-          solid[at(gx, gy)] = 0;
-        }
+      const px = s.x * (1 - t) + (nx / len) * drift * Math.sin(t * Math.PI);
+      const py = s.y * (1 - t) + (ny / len) * drift * Math.sin(t * Math.PI);
+      carve(toCell(px), toCell(py));
+    }
+  }
+
+  function carve(cx: number, cy: number): void {
+    for (let dy = -CARVE_RADIUS; dy <= CARVE_RADIUS; dy++) {
+      for (let dx = -CARVE_RADIUS; dx <= CARVE_RADIUS; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!inGrid(x, y) || isRock(x, y)) continue;
+        solid[at(x, y)] = 0;
+        protectedCell[at(x, y)] = 1;
       }
     }
   }
@@ -95,9 +104,7 @@ export function generateArena(seed: number, playerCount: number): Arena {
     const next = new Uint8Array(n * n);
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
-        const wx = toWorld(x);
-        const wy = toWorld(y);
-        if (Math.hypot(wx, wy) > radius - cs) {
+        if (isRock(x, y)) {
           next[at(x, y)] = 1;
           continue;
         }
@@ -106,10 +113,8 @@ export function generateArena(seed: number, playerCount: number): Arena {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
-            const nx = x + dx;
-            const ny = y + dy;
             // Out of bounds counts as wall, so the map closes in on itself.
-            walls += nx < 0 || ny < 0 || nx >= n || ny >= n ? 1 : solid[at(nx, ny)];
+            walls += inGrid(x + dx, y + dy) ? solid[at(x + dx, y + dy)] : 1;
           }
         }
         next[at(x, y)] = walls > 4 ? 1 : walls < 4 ? 0 : solid[at(x, y)];
@@ -118,63 +123,208 @@ export function generateArena(seed: number, playerCount: number): Arena {
     solid = next;
   }
 
-  const reachable = floodFrom(spawns[0], solid, n, at, toCell);
-
-  const walls: Wall[] = [];
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      if (!solid[at(x, y)]) continue;
-      walls.push({
-        x: toWorld(x) + (rng() - 0.5) * cs * 0.3,
-        y: toWorld(y) + (rng() - 0.5) * cs * 0.3,
-        r: cs * (0.62 + rng() * 0.22),
-      });
+  const buildWalls = (): Wall[] => {
+    const out: Wall[] = [];
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        if (!solid[at(x, y)]) continue;
+        out.push({
+          x: toWorld(x) + (hash01(x, y, seed ^ 1) - 0.5) * cs * 0.3,
+          y: toWorld(y) + (hash01(x, y, seed ^ 2) - 0.5) * cs * 0.3,
+          r: cs * (0.62 + hash01(x, y, seed ^ 3) * 0.22),
+        });
+      }
     }
+    return out;
+  };
+
+  /** Open cells a node could actually occupy, given the wall circles around them. */
+  const buildPassable = (index: WallIndex): Uint8Array => {
+    const pass = new Uint8Array(n * n);
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        if (solid[at(x, y)] || isRock(x, y)) continue;
+        const p = { x: toWorld(x), y: toWorld(y) };
+        pass[at(x, y)] = index.discBlocks(p, NODE_SPACING) ? 0 : 1;
+      }
+    }
+    return pass;
+  };
+
+  let walls = buildWalls();
+  let index = new WallIndex(walls, radius);
+  let passable = buildPassable(index);
+  let reachable = floodFrom(spawns[0], passable, n, at, toCell);
+
+  // Connect (or delete) whatever the main cave still can't get to.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const pockets = findPockets(passable, reachable, n, at);
+    if (pockets.length === 0) break;
+    const routes = routesToMain(reachable, passable, n, inGrid);
+    let changed = false;
+    for (const pocket of pockets) {
+      if (pocket.length < MIN_POCKET_CELLS) {
+        for (const i of pocket) solid[i] = 1; // too small to be worth a crack
+        changed = true;
+        continue;
+      }
+      // Carve back along the shortest route from the pocket to the main cave.
+      let best = -1;
+      for (const i of pocket) if (best < 0 || routes.dist[i] < routes.dist[best]) best = i;
+      if (best < 0 || routes.dist[best] === Infinity) continue;
+      for (let i = best; i !== -1 && routes.dist[i] > 0; i = routes.parent[i]) {
+        carve(i % n, (i - (i % n)) / n);
+      }
+      changed = true;
+    }
+    if (!changed) break;
+    walls = buildWalls();
+    index = new WallIndex(walls, radius);
+    passable = buildPassable(index);
+    reachable = floodFrom(spawns[0], passable, n, at, toCell);
   }
 
   return {
     radius,
     walls,
     spawns,
-    index: new WallIndex(walls, radius),
+    index,
     isReachable: (p) => {
       const x = toCell(p.x);
       const y = toCell(p.y);
-      if (x < 0 || y < 0 || x >= n || y >= n) return false;
-      return reachable[at(x, y)] === 1;
+      return inGrid(x, y) && reachable[at(x, y)] === 1;
     },
   };
 }
 
-/** Marks open cells connected to `start` — everything else is rock or a sealed pocket. */
+/** Groups of passable cells the main cave can't reach. */
+function findPockets(
+  passable: Uint8Array,
+  reachable: Uint8Array,
+  n: number,
+  at: (x: number, y: number) => number,
+): number[][] {
+  const seen = new Uint8Array(n * n);
+  const pockets: number[][] = [];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const start = at(x, y);
+      if (!passable[start] || reachable[start] || seen[start]) continue;
+      const group: number[] = [];
+      const stack = [start];
+      seen[start] = 1;
+      while (stack.length) {
+        const i = stack.pop()!;
+        group.push(i);
+        for (const j of neighbours(i, n)) {
+          if (passable[j] && !seen[j]) {
+            seen[j] = 1;
+            stack.push(j);
+          }
+        }
+      }
+      pockets.push(group);
+    }
+  }
+  return pockets;
+}
+
+/**
+ * Breadth-first search outward from the main cave across every cell, wall or not,
+ * so each pocket can be walked back to the main cave along the shortest route.
+ */
+function routesToMain(
+  reachable: Uint8Array,
+  passable: Uint8Array,
+  n: number,
+  inGrid: (x: number, y: number) => boolean,
+): { dist: Float64Array; parent: Int32Array } {
+  const dist = new Float64Array(n * n).fill(Infinity);
+  const parent = new Int32Array(n * n).fill(-1);
+  const queue: number[] = [];
+  for (let i = 0; i < reachable.length; i++) {
+    if (reachable[i] && passable[i]) {
+      dist[i] = 0;
+      queue.push(i);
+    }
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const i = queue[head];
+    for (const j of neighbours(i, n)) {
+      const x = j % n;
+      const y = (j - x) / n;
+      // Keep one cell clear of the grid edge so carving can't breach the boundary.
+      if (!inGrid(x, y) || x < 2 || y < 2 || x >= n - 2 || y >= n - 2) continue;
+      if (dist[j] !== Infinity) continue;
+      dist[j] = dist[i] + 1;
+      parent[j] = i;
+      queue.push(j);
+    }
+  }
+  return { dist, parent };
+}
+
+function* neighbours(i: number, n: number): Generator<number> {
+  const x = i % n;
+  const y = (i - x) / n;
+  if (x > 0) yield i - 1;
+  if (x < n - 1) yield i + 1;
+  if (y > 0) yield i - n;
+  if (y < n - 1) yield i + n;
+}
+
+/** Marks passable cells connected to `start`. */
 function floodFrom(
   start: Vec,
-  solid: Uint8Array,
+  passable: Uint8Array,
   n: number,
   at: (x: number, y: number) => number,
   toCell: (v: number) => number,
 ): Uint8Array {
   const seen = new Uint8Array(n * n);
-  const sx = toCell(start.x);
-  const sy = toCell(start.y);
-  if (sx < 0 || sy < 0 || sx >= n || sy >= n || solid[at(sx, sy)]) return seen;
+  let sx = toCell(start.x);
+  let sy = toCell(start.y);
+  if (sx < 0 || sy < 0 || sx >= n || sy >= n) return seen;
+  if (!passable[at(sx, sy)]) {
+    // Spawn cell itself is tight: start from the nearest passable cell instead.
+    let best = -1;
+    let bestD = Infinity;
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        if (!passable[at(x, y)]) continue;
+        const d = (x - sx) ** 2 + (y - sy) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = at(x, y);
+        }
+      }
+    }
+    if (best < 0) return seen;
+    sx = best % n;
+    sy = (best - sx) / n;
+  }
   const stack = [at(sx, sy)];
   seen[at(sx, sy)] = 1;
   while (stack.length) {
     const i = stack.pop()!;
-    const x = i % n;
-    const y = (i - x) / n;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
-      const j = at(nx, ny);
-      if (seen[j] || solid[j]) continue;
+    for (const j of neighbours(i, n)) {
+      if (seen[j] || !passable[j]) continue;
       seen[j] = 1;
       stack.push(j);
     }
   }
   return seen;
+}
+
+/** Stable per-cell pseudo-random value, so wall circles survive a rebuild unchanged. */
+function hash01(a: number, b: number, c: number): number {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b);
+  h = Math.imul(h ^ (b + 0x165667b1), 0xc2b2ae35);
+  h = Math.imul(h ^ (c + 0x27d4eb2f), 0x165667b1);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2545f491);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
 }
 
 /**

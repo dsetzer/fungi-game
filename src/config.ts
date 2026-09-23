@@ -45,6 +45,12 @@ export const TERRAIN_FILL = 0.52; // initial wall chance before smoothing
 export const TERRAIN_SMOOTHING = 4; // cellular-automata passes
 export const SPAWN_CLEAR_RADIUS = 800; // terrain carved open around each spawn
 
+// §8 Fog of war — colonies light up a radius; explored ground stays remembered
+export const VISION_REACH_SCALE = 1.15; // vision as a multiple of a colony's reach
+export const VISION_MIN = 520;
+export const FOG_CELL = 240; // resolution of the explored-ground memory
+export const FOG_EXPLORED_ALPHA = 0.28; // how much fog remains over remembered ground
+
 // Match
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
 export const BOT_THINK_SECONDS = 1;

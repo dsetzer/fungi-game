@@ -4,6 +4,7 @@ import type { Vec } from "../sim/geometry";
 import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
+import { FogOfWar } from "./fog";
 import { TerritoryLayer } from "./territory";
 
 const COLORS = {
@@ -12,6 +13,8 @@ const COLORS = {
   wallFill: "#e7eaee",
   floor: "#ffffff",
   fallCore: "#a3a3aa",
+  fog: "#c9ced4",
+  reachRing: "#00000066",
   valid: "#2f9e44",
   invalid: "#e03131",
   warn: "#f08c00",
@@ -22,6 +25,8 @@ const DEATH_WARN_SECONDS = 20;
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private territory = new TerritoryLayer();
+  /** Recreated when the round does, so a new arena starts fully fogged. */
+  private fog: { arena: World["arena"]; fog: FogOfWar } | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private camera: Camera) {
     this.ctx = canvas.getContext("2d")!;
@@ -48,23 +53,38 @@ export class Renderer {
     ctx.scale(camera.zoom, camera.zoom);
     ctx.translate(-camera.x, -camera.y);
 
+    // Fog decides what exists on screen this frame: your own things always, a
+    // rival's only while one of your colonies can see it.
+    if (this.fog?.arena !== world.arena) this.fog = { arena: world.arena, fog: new FogOfWar(world.arena.radius) };
+    const fog = this.fog.fog;
+    fog.update(world, player);
+    const seen = fog.visibleNodes(world, player);
+    const shown = (id: number) => seen.has(id);
+
     this.drawFloor(world);
-    this.drawAuras(world, timeMs);
+    this.drawAuras(world, timeMs, shown);
     this.drawTerrain(world);
     for (const b of world.barriers.values()) {
+      if (b.owner !== player && !fog.isVisible(b.x, b.y)) continue;
       const color = world.player(b.owner)?.color ?? "#888";
       const anchor = world.nodes.get(b.anchor)!;
       this.drawWall(anchor, b, b.a, b.b, color, b.id === input.hoverWall ? 1 : 0.8);
     }
-    for (const p of world.pipes.values()) this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
+    for (const p of world.pipes.values()) {
+      if (!shown(p.from) || !shown(p.to)) continue;
+      this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
+    }
     const hovered = input.nodeAt(input.cursor);
     // Hovering your own colony shows how far it can reach right now.
     if (hovered?.owner === player && !input.drag && input.wallDrag == null) {
       this.drawReachRing(world, hovered);
     }
-    for (const n of world.nodes.values()) this.drawNode(world, n, n === hovered);
+    for (const n of world.nodes.values()) {
+      if (shown(n.id)) this.drawNode(world, n, n === hovered);
+    }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
+    fog.draw(ctx, camera, COLORS.fog);
   }
 
   /** Stem from the colony to the crossbar, drawn as a ⊢ like the original. */
@@ -101,9 +121,10 @@ export class Renderer {
 
   private drawReachRing(world: World, from: GameNode): void {
     const { ctx } = this;
-    ctx.strokeStyle = "#0002";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = COLORS.reachRing;
+    ctx.lineWidth = 1.5 / this.camera.zoom;
+    const dash = 10 / this.camera.zoom;
+    ctx.setLineDash([dash, dash]);
     ctx.beginPath();
     ctx.arc(from.x, from.y, world.reachOf(from), 0, Math.PI * 2);
     ctx.stroke();
@@ -200,9 +221,9 @@ export class Renderer {
   }
 
   /** Fluid areas (metaballs), rendered in screen space and composited here. */
-  private drawAuras(world: World, timeMs: number): void {
+  private drawAuras(world: World, timeMs: number, shown: (id: number) => boolean): void {
     const { ctx, camera } = this;
-    const layer = this.territory.render(world, camera, timeMs);
+    const layer = this.territory.render(world, camera, timeMs, shown);
     ctx.save();
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

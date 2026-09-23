@@ -30,13 +30,14 @@ src/
   config.ts          all tuning numbers + size/reach curves
   sim/               pure game logic — no DOM, runs headless (tests, future server)
     world.ts         state, rule checks (canEject/canConnect/canCut), tick
-    arena.ts         seeded circle-cluster arena generation
+    arena.ts         seeded cave generation + WallIndex (line-of-sight queries)
     bot.ts           placeholder AI that issues ordinary Commands
     match.ts         one authoritative tick (bots + world.step)
     geometry.ts      segment/circle math, seeded RNG
     types.ts         entities + Command union
   render/            Canvas 2D renderer + camera
     territory.ts     metaball "fluid" auras (WebGL2 shader, CPU fallback)
+    fog.ts           fog of war: vision, explored memory, grey overlay
   input/             mouse/keyboard → Commands
   main.ts            fixed-timestep loop, HUD, round restart
 tests/               vitest specs for the sim
@@ -53,6 +54,7 @@ These are placeholders. Change them in `config.ts` / `world.ts`:
 - **Walls:** 15 nutrients each, max 3 per colony, fixed 170-unit crossbar (scaled with the bigger map); a new crossbar severs hyphae crossing it.
 - **Map:** radius 5400 (~15x the first prototype's area), cave terrain generated per round; reach = 220 + 20*sqrt(nutrients).
 - **Gathering:** draining a fall costs it 3/s but gives the colony 6/s (`FALL_DRAIN_GAIN`); colony-to-colony is 1:1.
+- **Fog of war:** colonies see 1.15x their reach (min 520); explored ground stays remembered — terrain and falls persist, rival colonies/hyphae/walls only show while in sight. Client-side view filter for now; bots still see everything.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained (sustained = has inflow and isn't sending out more than it receives).
 - **Falls pay upkeep:** no (`FALLS_PAY_UPKEEP = false`).
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so funnelling and reinforcement always work. Falls are uncapped.

@@ -70,11 +70,19 @@ export class TerritoryLayer {
   private gpu = new GpuTerritory();
   private cpu: CpuTerritory | null = null;
 
-  /** Renders the frame; returns the canvas to composite over the viewport. */
-  render(world: World, camera: Camera, timeMs: number): HTMLCanvasElement {
-    if (this.gpu.available && this.gpu.render(world, camera, timeMs)) return this.gpu.canvas;
+  /**
+   * Renders the frame; returns the canvas to composite over the viewport.
+   * `shown` filters out nodes hidden by fog of war.
+   */
+  render(
+    world: World,
+    camera: Camera,
+    timeMs: number,
+    shown: (id: number) => boolean = () => true,
+  ): HTMLCanvasElement {
+    if (this.gpu.available && this.gpu.render(world, camera, timeMs, shown)) return this.gpu.canvas;
     this.cpu ??= new CpuTerritory();
-    this.cpu.render(world, camera, timeMs);
+    this.cpu.render(world, camera, timeMs, shown);
     return this.cpu.canvas;
   }
 }
@@ -88,12 +96,19 @@ interface Ball {
 }
 
 /** Node auras in target-pixel space (y down), culled to the viewport. */
-function collectBalls(world: World, camera: Camera, scale: number, w: number, h: number): Ball[] {
+function collectBalls(
+  world: World,
+  camera: Camera,
+  scale: number,
+  w: number,
+  h: number,
+  shown: (id: number) => boolean,
+): Ball[] {
   const out: Ball[] = [];
   const k = camera.zoom * scale;
   for (const n of world.nodes.values()) {
     const layer = n.owner ?? 0;
-    if (layer >= MAX_LAYERS) continue;
+    if (layer >= MAX_LAYERS || !shown(n.id)) continue;
     const r = world.auraOf(n) * k;
     const x = ((n.x - camera.x) * camera.zoom + camera.width / 2) * scale;
     const y = ((n.y - camera.y) * camera.zoom + camera.height / 2) * scale;
@@ -126,7 +141,7 @@ class CpuTerritory {
   private image: ImageData | null = null;
   private static readonly SCALE = 0.3; // grid resolution relative to CSS px
 
-  render(world: World, camera: Camera, timeMs: number): void {
+  render(world: World, camera: Camera, timeMs: number, shown: (id: number) => boolean): void {
     const scale = CpuTerritory.SCALE;
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
@@ -140,7 +155,7 @@ class CpuTerritory {
 
     const t = timeMs / 1000;
     const used = new Set<number>();
-    for (const b of collectBalls(world, camera, scale, w, h)) {
+    for (const b of collectBalls(world, camera, scale, w, h, shown)) {
       used.add(b.layer);
       const field = this.fields[b.layer];
       const maxR = b.r * REACH * 1.08; // wobble headroom
@@ -250,7 +265,7 @@ class GpuTerritory {
   }
 
   /** Renders the current frame into `this.canvas`. Returns false if unavailable. */
-  render(world: World, camera: Camera, timeMs: number): boolean {
+  render(world: World, camera: Camera, timeMs: number, shown: (id: number) => boolean): boolean {
     const gl = this.gl;
     if (!gl || !this.prog) return false;
 
@@ -264,7 +279,7 @@ class GpuTerritory {
     }
 
     // Balls in buffer pixel space, y flipped for gl_FragCoord.
-    const balls = collectBalls(world, camera, scale, w, h);
+    const balls = collectBalls(world, camera, scale, w, h, shown);
     // .w packs layer and the node's stable wobble seed: layer * 1000 + seed.
     balls.forEach((b, i) => this.balls.set([b.x, h - b.y, b.r, b.layer * 1000 + b.seed], i * 4));
     const count = balls.length;

@@ -130,7 +130,13 @@ The combination of per-tick upkeep, resource-gated range, one-pipeline-per-pair,
 5. The round ends when a single player's network is the last one standing.
 6. The arena is discarded and regenerated for the next round.
 
-> **Open item:** player count per arena, whether there's any progression/meta layer between rounds (cosmetics, unlocks, ranking), and whether bots fill empty slots are all undecided — flagging these as scoping questions for the next design pass rather than guessing at them here.
+**Implemented round system (multiplayer):** because players join and respawn instantly (below), `last network standing` cannot end a round, so rounds run on a **timer** (prototype: 10 minutes) and the winner is whoever **gathered the most** — score counts every nutrient drawn into your network from a fall or a rival, which is what the original's millions-high leaderboard implies. Between rounds there is a short intermission, then the arena is regenerated.
+
+- **Joining:** a player who connects mid-round spawns immediately in open ground, with a nutrient fall guaranteed within starting reach (.io style, matching the original's 47-player leaderboard).
+- **Death:** losing your whole network respawns you straight away in the same round.
+- **Arena size scales with the player count**, so density stays roughly constant as players come and go (radius = 5400 x sqrt(players / 4), clamped). Scaling happens at round start, not mid-round, since terrain can't be regenerated under live networks.
+
+> **Open item:** progression/meta between rounds (cosmetics, unlocks, ranking) is still undecided, and bots currently only fill *solo* play — online rounds have no AI opponents.
 
 ## 8. Visual & UX Direction
 

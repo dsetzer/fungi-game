@@ -34,9 +34,9 @@ const CARVE_RADIUS = 1;
  * would leave pockets nothing can reach. Anything still cut off afterwards is
  * either connected by a carved crack or filled in.
  */
-export function generateArena(seed: number, playerCount: number): Arena {
+export function generateArena(seed: number, playerCount: number, radiusOverride?: number): Arena {
   const rng = makeRng(seed);
-  const radius = ARENA_RADIUS;
+  const radius = radiusOverride ?? ARENA_RADIUS;
   const cs = TERRAIN_CELL;
   const n = Math.ceil((radius * 2) / cs) + 2;
   const origin = -radius - cs;

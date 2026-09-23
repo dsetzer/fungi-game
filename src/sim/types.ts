@@ -7,6 +7,8 @@ export interface Player {
   color: string;
   isBot: boolean;
   alive: boolean;
+  /** Nutrients drawn into this player's network from outside it — leaderboard rank. */
+  score: number;
 }
 
 export type NodeKind = "colony" | "fall";

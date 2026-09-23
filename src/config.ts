@@ -51,7 +51,17 @@ export const VISION_MIN = 520;
 export const FOG_CELL = 240; // resolution of the explored-ground memory
 export const FOG_EXPLORED_ALPHA = 0.28; // how much fog remains over remembered ground
 
-// Match
+// Multiplayer rounds
+export const ROUND_SECONDS = 600;
+export const INTERMISSION_SECONDS = 12;
+export const SNAPSHOT_HZ = 10;
+export const SERVER_PORT = 8787;
+/** Arena radius scales with the player count so density stays roughly constant. */
+export function radiusForPlayers(players: number): number {
+  return Math.round(Math.min(12000, Math.max(2800, ARENA_RADIUS * Math.sqrt(Math.max(1, players) / 4))));
+}
+
+// Match (solo/offline mode)
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
 export const BOT_THINK_SECONDS = 1;
 export const ROUND_RESTART_DELAY_MS = 4000;

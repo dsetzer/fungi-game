@@ -1,6 +1,6 @@
 import type { Camera } from "../render/camera";
 import { distToSegmentSq, type Vec } from "../sim/geometry";
-import type { EntityId, GameNode, PlayerId } from "../sim/types";
+import type { Command, EntityId, GameNode, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 
 const PAN_SPEED = 900; // world px per second at zoom 1
@@ -37,7 +37,9 @@ export class Input {
     private canvas: HTMLCanvasElement,
     private camera: Camera,
     private getWorld: () => World,
-    private player: PlayerId,
+    private player: () => PlayerId,
+    /** Where commands go: the local world offline, the server online. */
+    private send: (cmd: Command) => void,
   ) {
     canvas.addEventListener("pointerdown", this.onDown);
     canvas.addEventListener("pointermove", this.onMove);
@@ -100,7 +102,7 @@ export class Input {
     const world = this.getWorld();
     const tol = 8 / this.camera.zoom;
     for (const w of world.barriers.values()) {
-      if (w.owner !== this.player) continue;
+      if (w.owner !== this.player()) continue;
       if (distToSegmentSq(p.x, p.y, w.a.x, w.a.y, w.b.x, w.b.y) < tol * tol) return w.id;
     }
     return null;
@@ -113,7 +115,7 @@ export class Input {
     if (e.button === 0) {
       if (node) this.drag = { from: node.id };
     } else if (e.button === 2) {
-      const wallFrom = node && node.owner === this.player ? node.id : null;
+      const wallFrom = node && node.owner === this.player() ? node.id : null;
       this.right = { sx: e.offsetX, sy: e.offsetY, moved: false, wallFrom };
     }
   };
@@ -135,28 +137,27 @@ export class Input {
   };
 
   private onUp = (e: PointerEvent) => {
-    const world = this.getWorld();
-    const player = this.player;
+    const player = this.player();
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);
 
     if (e.button === 0 && this.drag) {
       const from = this.drag.from;
       const target = this.nodeAt(this.cursor);
       if (target && target.id !== from) {
-        world.enqueue({ type: "connect", player, from, to: target.id });
+        this.send({ type: "connect", player, from, to: target.id });
       } else if (!target) {
-        world.enqueue({ type: "eject", player, from, ...this.cursor });
+        this.send({ type: "eject", player, from, ...this.cursor });
       }
       this.drag = null;
     } else if (e.button === 2 && this.right) {
       const r = this.right;
       if (r.moved && r.wallFrom != null) {
-        world.enqueue({ type: "wall", player, from: r.wallFrom, ...this.cursor });
+        this.send({ type: "wall", player, from: r.wallFrom, ...this.cursor });
       } else if (!r.moved) {
         const wall = this.wallAt(this.cursor);
         const pipe = wall == null ? this.pipeAt(this.cursor) : null;
-        if (wall != null) world.enqueue({ type: "demolish", player, wall });
-        else if (pipe != null) world.enqueue({ type: "cut", player, pipe });
+        if (wall != null) this.send({ type: "demolish", player, wall });
+        else if (pipe != null) this.send({ type: "cut", player, pipe });
       }
       this.right = null;
     }

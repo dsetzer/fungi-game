@@ -6,10 +6,27 @@ Browser prototype of the mycelial-network arena game described in [design-docume
 
 ```
 npm install
-npm run dev        # http://localhost:5173
-npm test           # sim unit tests (vitest)
+npm run server     # authoritative game server on http://localhost:8787
+npm run dev        # client dev server on http://localhost:5173
+npm test           # sim + server unit tests (vitest)
 npm run build      # typecheck + production build into dist/
 ```
+
+Open http://localhost:5173 in two tabs to play against yourself — add `?name=Armillaria` so the
+tabs don't share a stored name. With no server running the client plays solo against bots and
+keeps retrying, switching to multiplayer the moment the server answers. After `npm run build`
+the server also hosts the client itself on port 8787.
+
+## Multiplayer
+
+- **Authoritative server.** `server/` runs the same `src/sim/` code; clients send `Command`s and
+  receive snapshots. Nothing is simulated client-side.
+- **Fog of war is enforced server-side:** each player's snapshot contains only what they can see,
+  so hidden state never reaches the client.
+- **Terrain is never sent** — the client regenerates the identical arena from the round's seed.
+- **Rounds** run 10 minutes. Players join and respawn instantly, so the winner is whoever gathered
+  the most (score = nutrients drawn into your network from falls or rivals). The arena is then
+  regenerated at a size scaled to the player count.
 
 ## Controls
 
@@ -38,9 +55,11 @@ src/
   render/            Canvas 2D renderer + camera
     territory.ts     metaball "fluid" auras (WebGL2 shader, CPU fallback)
     fog.ts           fog of war: vision, explored memory, grey overlay
+  net/               protocol (shared with server) + client connection
   input/             mouse/keyboard → Commands
   main.ts            fixed-timestep loop, HUD, round restart
-tests/               vitest specs for the sim
+server/              authoritative server: rounds, join/respawn, per-player snapshots
+tests/               vitest specs for the sim and the server room
 reference/           screenshots of the original game
 ```
 

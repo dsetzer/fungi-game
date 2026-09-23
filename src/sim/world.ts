@@ -61,6 +61,8 @@ export class World {
   readonly players: Player[] = [];
   winner: PlayerId | null = null;
   ended = false;
+  /** Server rounds end on a timer and respawn the dead, so last-standing is off. */
+  endOnLastStanding = true;
 
   private nextId = 1;
   private queue: Command[] = [];
@@ -96,7 +98,7 @@ export class World {
   addPlayer(name: string, isBot: boolean): Player {
     const id = this.players.length + 1;
     const player: Player = {
-      id, name, isBot, alive: true,
+      id, name, isBot, alive: true, score: 0,
       color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length],
     };
     this.players.push(player);
@@ -399,6 +401,12 @@ export class World {
       // Draining a fall yields more than it costs the fall (§6.4): gathering is
       // meant to be fast. Colony-to-colony transfers stay 1:1.
       const gained = src.kind === "fall" ? amount * FALL_DRAIN_GAIN : amount;
+      // Score is everything drawn into your network from outside it (§7 leaderboard).
+      const dst = this.nodes.get(p.to)!;
+      if (dst.owner != null && dst.owner !== src.owner) {
+        const earner = this.player(dst.owner);
+        if (earner) earner.score += gained;
+      }
       add(p.from, -amount);
       add(p.to, gained);
       inflow.set(p.to, (inflow.get(p.to) ?? 0) + gained);
@@ -443,6 +451,7 @@ export class World {
     for (const n of this.nodes.values()) if (n.owner != null) alive.add(n.owner);
     for (const pl of this.players) pl.alive = alive.has(pl.id);
 
+    if (!this.endOnLastStanding) return;
     // With a single player (solo sandbox) the round only ends when they die.
     const threshold = this.players.length > 1 ? 1 : 0;
     if (alive.size <= threshold) {

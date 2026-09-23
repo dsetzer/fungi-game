@@ -7,12 +7,14 @@ import {
   NODE_SPACING,
   PIPE_RATE_PER_SEC,
   SIM_HZ,
+  START_NUTRIENTS,
   UPKEEP_PER_SEC,
   WALL_COST,
   reach,
 } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
 import { dist } from "../src/sim/geometry";
+import { spawnInto } from "../src/sim/spawn";
 import { World } from "../src/sim/world";
 
 const openArena = (walls: Parameters<typeof emptyArena>[1] = []) => emptyArena(2000, walls);
@@ -359,6 +361,28 @@ describe("match", () => {
       [...w2.nodes.values()].map((n) => [n.x, n.y]),
     );
     expect(w1.players.length).toBeGreaterThan(1);
+  });
+
+  it("always spawns a joining player with food in reach", () => {
+    for (let seed = 1; seed <= 4; seed++) {
+      const world = World.createMatch(seed);
+      world.endOnLastStanding = false;
+      // Food must be comfortably inside reach: reach shrinks as a colony starves.
+      const startReach = reach(START_NUTRIENTS) * 0.75;
+      // Twelve joiners dropping into a live round, one after another.
+      for (let i = 0; i < 12; i++) {
+        const player = world.addPlayer(`joiner${i}`, false);
+        const home = spawnInto(world, player);
+        const fed = [...world.nodes.values()].some(
+          (n) =>
+            n.kind === "fall" &&
+            dist(n.x, n.y, home.x, home.y) <= startReach &&
+            world.hasLineOfSight(home, n),
+        );
+        expect(fed, `seed ${seed} joiner ${i} at ${Math.round(home.x)},${Math.round(home.y)}`).toBe(true);
+        expect(world.arena.isReachable(home)).toBe(true);
+      }
+    }
   });
 
   it("leaves no open ground cut off from the main cave", () => {

@@ -51,6 +51,8 @@ These are placeholders. Change them in `config.ts` / `world.ts`:
 
 - **Mouse buttons:** left-drag = eject/connect, right-drag from own colony = wall, right-click = cut/demolish, right-drag elsewhere = pan.
 - **Walls:** 15 nutrients each, max 3 per colony, fixed 80-unit crossbar; a new crossbar severs hyphae crossing it.
+- **Map:** radius 5400 (~15x the first prototype's area), cave terrain generated per round; reach = 220 + 20*sqrt(nutrients).
+- **Gathering:** draining a fall costs it 3/s but gives the colony 6/s (`FALL_DRAIN_GAIN`); colony-to-colony is 1:1.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained (sustained = has inflow and isn't sending out more than it receives).
 - **Falls pay upkeep:** no (`FALLS_PAY_UPKEEP = false`).
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so funnelling and reinforcement always work. Falls are uncapped.

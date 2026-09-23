@@ -18,7 +18,8 @@ export class Camera {
   /** Zoom by `factor`, keeping the world point under (sx, sy) fixed. */
   zoomAt(sx: number, sy: number, factor: number): void {
     const before = this.screenToWorld(sx, sy);
-    this.zoom = Math.min(3, Math.max(0.15, this.zoom * factor));
+    // Lower bound lets you pull back far enough to read the whole arena.
+    this.zoom = Math.min(3, Math.max(0.045, this.zoom * factor));
     const after = this.screenToWorld(sx, sy);
     this.x += before.x - after.x;
     this.y += before.y - after.y;

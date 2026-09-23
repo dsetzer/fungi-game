@@ -2,6 +2,7 @@ import {
   DT,
   EJECT_BUFFER,
   EJECT_MIN_PARENT_REMAINING,
+  FALL_DRAIN_GAIN,
   FALL_CLUSTER_BLOBS_MAX,
   FALL_CLUSTER_BLOBS_MIN,
   FALL_CLUSTER_SPREAD,
@@ -30,7 +31,6 @@ import {
   dist,
   distToSegmentSq,
   makeRng,
-  segmentHitsCircle,
   segmentsIntersect,
   type Vec,
 } from "./geometry";
@@ -152,8 +152,11 @@ export class World {
       const d = Math.sqrt(this.rng()) * (this.arena.radius - FALL_CLUSTER_SPREAD - 40);
       const c = { x: Math.cos(a) * d, y: Math.sin(a) * d };
       // Keep neutral clusters away from spawns so each player's home cluster is theirs.
-      const nearSpawn = this.arena.spawns.some((s) => dist(s.x, s.y, c.x, c.y) < 500);
-      if (!nearSpawn && this.isFreeSpot(c, NODE_SPACING * 2)) {
+      const nearSpawn = this.arena.spawns.some(
+        (s) => dist(s.x, s.y, c.x, c.y) < SPAWN_CLUSTER_DISTANCE * 2.5,
+      );
+      // Skip pockets walled off from the main cave system — nobody could ever reach them.
+      if (!nearSpawn && this.arena.isReachable(c) && this.isFreeSpot(c, NODE_SPACING * 2)) {
         this.addFallCluster(c);
         placed++;
       }
@@ -203,7 +206,7 @@ export class World {
 
   /** Blocked by terrain and by any player-built crossbar. */
   hasLineOfSight(a: Vec, b: Vec): boolean {
-    if (this.arena.walls.some((w) => segmentHitsCircle(a, b, w))) return false;
+    if (this.arena.index.segmentBlocks(a, b)) return false;
     for (const bar of this.barriers.values()) {
       if (segmentsIntersect(a, b, bar.a, bar.b)) return false;
     }
@@ -231,7 +234,7 @@ export class World {
   /** Inside the arena, not in a wall, not overlapping any node. */
   isFreeSpot(p: Vec, radius: number): boolean {
     if (Math.hypot(p.x, p.y) + radius > this.arena.radius) return false;
-    if (this.arena.walls.some((w) => dist(w.x, w.y, p.x, p.y) < w.r + radius)) return false;
+    if (this.arena.index.discBlocks(p, radius)) return false;
     for (const n of this.nodes.values()) {
       if (dist(n.x, n.y, p.x, p.y) < this.radiusOf(n) + radius) return false;
     }
@@ -393,9 +396,12 @@ export class World {
       const share = Math.min(1, Math.max(0, src.nutrients) / wanted);
       if (share < 1) drained.add(p.from);
       const amount = perStep * share;
+      // Draining a fall yields more than it costs the fall (§6.4): gathering is
+      // meant to be fast. Colony-to-colony transfers stay 1:1.
+      const gained = src.kind === "fall" ? amount * FALL_DRAIN_GAIN : amount;
       add(p.from, -amount);
-      add(p.to, amount);
-      inflow.set(p.to, (inflow.get(p.to) ?? 0) + amount);
+      add(p.to, gained);
+      inflow.set(p.to, (inflow.get(p.to) ?? 0) + gained);
     }
 
     // Upkeep is only charged to nodes that aren't sustained. A node is sustained

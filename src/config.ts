@@ -13,30 +13,37 @@ export const EJECT_BUFFER = 30; // nutrients moved from parent into a newly ejec
 export const EJECT_MIN_PARENT_REMAINING = 10; // parent must keep at least this after ejecting
 
 // §6.2 Pipelines
-export const PIPE_RATE_PER_SEC = 3; // nutrients per second along one hypha
+export const PIPE_RATE_PER_SEC = 3; // nutrients per second drawn out of the source
+// Draining a nutrient fall yields more than it costs the fall: the fall loses
+// PIPE_RATE_PER_SEC, the colony gains this multiple of it. Colony-to-colony
+// transfers stay 1:1 — doubling those would let a loop of colonies print nutrients.
+export const FALL_DRAIN_GAIN = 2;
 // Only outgoing hyphae are capped; a colony can take in any number (funnelling,
 // reinforcement). Falls are uncapped.
 export const MAX_OUT_PIPES_PER_COLONY = 4;
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
-export const WALL_BAR_LENGTH = 80;
+export const WALL_BAR_LENGTH = 170;
 export const WALL_COST = 15; // one-off, paid by the anchor colony
 export const MAX_WALLS_PER_COLONY = 3;
 export const WALLS_CUT_EXISTING_PIPES = true; // a new crossbar severs hyphae crossing it
 
 // §6.4 Nutrient falls — spawned as clusters of blobs, biggest in the middle
-export const NEUTRAL_FALL_CLUSTERS = 5; // in addition to one cluster per spawn
+export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one cluster per spawn
 export const FALL_CLUSTER_BLOBS_MIN = 4;
 export const FALL_CLUSTER_BLOBS_MAX = 8;
-export const FALL_CLUSTER_SPREAD = 90; // max blob distance from cluster centre
+export const FALL_CLUSTER_SPREAD = 160; // max blob distance from cluster centre
 export const FALL_POOL_CENTER = 900; // pool of a blob at the cluster centre
 export const FALL_POOL_EDGE = 120; // pool of a blob at the cluster's outer edge
-export const SPAWN_CLUSTER_DISTANCE = 220; // spawn → its cluster centre (just beyond start reach)
+export const SPAWN_CLUSTER_DISTANCE = 500; // spawn → its cluster centre (just beyond start reach)
 export const FALLS_PAY_UPKEEP = false; // open design question
 
 // §4 Arena
-export const ARENA_RADIUS = 1400;
-export const INTERIOR_CLUSTERS = 9;
+export const ARENA_RADIUS = 5400; // ~15x the area of the first prototype map
+export const TERRAIN_CELL = 90; // cave-generation grid cell size
+export const TERRAIN_FILL = 0.52; // initial wall chance before smoothing
+export const TERRAIN_SMOOTHING = 4; // cellular-automata passes
+export const SPAWN_CLEAR_RADIUS = 800; // terrain carved open around each spawn
 
 // Match
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
@@ -60,5 +67,5 @@ export function fallAura(nutrients: number): number {
 }
 
 export function reach(nutrients: number): number {
-  return 80 + Math.sqrt(Math.max(0, nutrients)) * 9;
+  return 220 + Math.sqrt(Math.max(0, nutrients)) * 20;
 }

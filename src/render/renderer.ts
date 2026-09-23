@@ -8,8 +8,8 @@ import { TerritoryLayer } from "./territory";
 
 const COLORS = {
   outside: "#e9ecef",
-  wallEdge: "#d6dbe0",
-  wallFill: "#eef0f3",
+  wallEdge: "#ccd2d8",
+  wallFill: "#e7eaee",
   floor: "#ffffff",
   fallCore: "#a3a3aa",
   valid: "#2f9e44",
@@ -129,13 +129,20 @@ export class Renderer {
 
   /** Drawn over the auras so terrain visibly occludes territory. */
   private drawTerrain(world: World): void {
-    const { ctx } = this;
+    const { ctx, camera } = this;
+    // The cave system is thousands of circles, so only draw what's on screen.
+    const halfW = camera.width / 2 / camera.zoom;
+    const halfH = camera.height / 2 / camera.zoom;
+    const visible = world.arena.index.inRect(
+      camera.x - halfW, camera.y - halfH,
+      camera.x + halfW, camera.y + halfH,
+    );
     // Two passes (slightly larger darker circles underneath) give the merged
     // clusters a single soft outline, like a cloud.
     for (const [pad, color] of [[3, COLORS.wallEdge], [0, COLORS.wallFill]] as const) {
       ctx.fillStyle = color;
       ctx.beginPath();
-      for (const w of world.arena.walls) {
+      for (const w of visible) {
         ctx.moveTo(w.x + w.r + pad, w.y);
         ctx.arc(w.x, w.y, w.r + pad, 0, Math.PI * 2);
       }

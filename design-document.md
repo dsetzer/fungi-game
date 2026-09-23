@@ -42,7 +42,7 @@ This mapping is intentionally low-effort to implement: the existing "circles for
 ## 4. The Arena
 
 - **Shape & scale:** A large but finite play space enclosed by an outer boundary. The boundary and all interior walls are built from clusters of variable-sized circles, giving the whole map a soft, cartoon-cloud silhouette on a plain white background (a look worth keeping deliberately abstract rather than pushing toward literal cloud or mushroom imagery).
-- **Procedural layout:** Interior walls are generated, not hand-placed, and are tuned specifically to create chokepoints and pockets:
+- **Procedural layout** *(implemented)*: terrain is a cellular-automata cave system spanning the whole map — open rooms joined by narrow chokepoints, with pockets that take probing to find. A carved artery runs from each spawn toward the centre so no player starts sealed in, and a clear bubble surrounds each spawn. Generation is tuned specifically to create chokepoints and pockets:
   - Some areas are large and open.
   - Some are large but sealed behind a single narrow gap — a deliberate Teleglitch-style "squeeze through the crack" reward for exploration, and a natural place to hide a strong nutrient fall or a safe expansion spot.
   - Screeps-style "room" thinking is useful here even without a hard grid: bias generation toward a set of loosely bounded cells connected by a handful of chokepoint exits each, rather than uniform open noise, so players can learn to read the map's chokepoints at a glance.
@@ -96,6 +96,7 @@ There's no separate "drain" tool — draining is just a pipeline where you start
 Nutrient falls are resource patches scattered across the arena at the start of each round, functioning as neutral, unowned nodes with their own nutrient pool.
 
 - Draining one normally depletes its pool — once it hits zero, it disappears.
+- **Draining a fall yields more than it costs the fall** *(confirmed from the original's pacing)*: the fall loses the pipeline rate, the draining colony gains a multiple of it (prototype: 2x). Gathering is meant to be fast — movement and exploration depend on it. Colony-to-colony transfers stay 1:1; doubling those would let a loop of colonies generate nutrients from nothing.
 - **Sustaining a fall (advanced tactic):** if one of your nodes simultaneously runs an outgoing pipeline *into* a fall while another of your pipelines draws *out* of that same fall, the two flows can offset each other and keep the fall's pool topped up indefinitely instead of being consumed — turning a one-time resource into a permanent (if contested, and upkeep-taxed) throughput point in your network. This loop-sustaining trick is one of the more distinctive emergent strategies from the original game and should be preserved deliberately rather than "balanced away" — it rewards understanding the flow model rather than just clicking fast.
 
 > **Open item:** whether nutrient falls pay their own upkeep (Section 5) like player nodes do, or are exempt, is unconfirmed — this materially affects how valuable the sustaining trick above is and needs to be pinned down during prototyping.

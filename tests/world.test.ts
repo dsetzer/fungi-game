@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EJECT_BUFFER,
+  FALL_DRAIN_GAIN,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   PIPE_RATE_PER_SEC,
@@ -9,13 +10,13 @@ import {
   WALL_COST,
   reach,
 } from "../src/config";
-import type { Arena } from "../src/sim/arena";
+import { emptyArena } from "../src/sim/arena";
 import { dist } from "../src/sim/geometry";
 import { World } from "../src/sim/world";
 
-const openArena = (walls: Arena["walls"] = []): Arena => ({ radius: 2000, walls, spawns: [] });
+const openArena = (walls: Parameters<typeof emptyArena>[1] = []) => emptyArena(2000, walls);
 
-function soloWorld(walls: Arena["walls"] = []) {
+function soloWorld(walls: Parameters<typeof emptyArena>[1] = []) {
   const world = new World(openArena(walls));
   const me = world.addPlayer("me", false);
   return { world, me };
@@ -44,9 +45,23 @@ describe("upkeep", () => {
     expect(world.ended).toBe(true);
   });
 
-  it("waives upkeep for a relay that passes on what it receives", () => {
+  it("gives a colony more than the fall loses when draining it", () => {
     const { world, me } = soloWorld();
     const fall = world.addFall(-120, 0, 500);
+    const c = world.addColony(me.id, 0, 0, 100);
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: c.id });
+    world.step();
+    const f0 = fall.nutrients;
+    const c0 = c.nutrients;
+    runSeconds(world, 1);
+    expect(f0 - fall.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC);
+    expect(c.nutrients - c0).toBeCloseTo(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN);
+  });
+
+  it("waives upkeep for a relay that passes on what it receives", () => {
+    const { world, me } = soloWorld();
+    // Fed by a colony, so the flow in is 1:1 with the flow out.
+    const fall = world.addColony(me.id, -120, 0, 5000);
     const relay = world.addColony(me.id, 0, 0, 20);
     const home = world.addColony(me.id, 120, 0, 100);
     world.enqueue({ type: "connect", player: me.id, from: fall.id, to: relay.id });
@@ -65,14 +80,18 @@ describe("upkeep", () => {
     const rival = world.addPlayer("rival", true);
     const fall = world.addFall(-80, 0, 500); // within the victim's small reach
     const victim = world.addColony(me.id, 0, 0, 5);
-    const r1 = world.addColony(rival.id, 120, 0, 100);
-    const r2 = world.addColony(rival.id, 0, 120, 100);
-    // Fed at 3/s, drained at 6/s by two rival hyphae.
+    // Fed at 6/s by the fall, drained at 9/s by three rival hyphae.
+    const rivals = [
+      world.addColony(rival.id, 120, 0, 100),
+      world.addColony(rival.id, 0, 120, 100),
+      world.addColony(rival.id, 0, -120, 100),
+    ];
     world.enqueue({ type: "connect", player: me.id, from: fall.id, to: victim.id });
-    world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: r1.id });
-    world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: r2.id });
+    for (const r of rivals) {
+      world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: r.id });
+    }
     world.step();
-    expect(world.pipes.size).toBe(3);
+    expect(world.pipes.size).toBe(4);
     runSeconds(world, 10);
     expect(world.nodes.has(victim.id)).toBe(false);
     expect([...world.pipes.values()].some((p) => p.from === victim.id || p.to === victim.id)).toBe(false);
@@ -95,7 +114,7 @@ describe("upkeep", () => {
 
   it("charges upkeep when a colony sends out more than it receives", () => {
     const { world, me } = soloWorld();
-    const fall = world.addFall(-120, 0, 500);
+    const fall = world.addColony(me.id, -120, 0, 5000); // colony source: 1:1
     const hub = world.addColony(me.id, 0, 0, 100);
     const a = world.addColony(me.id, 120, 0, 100);
     const b = world.addColony(me.id, 0, 120, 100);

@@ -2,6 +2,7 @@
   "name": "fungi-game",
   "private": true,
   "version": "0.0.1",
+  "description": "Real-time multiplayer .io game about growing a mycelial network — plant colonies, wire them with hyphae, drain rivals dry.",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -191,8 +191,13 @@ class CpuTerritory {
   private lastLayers: number[] = [];
   // Higher than it needs to be for the maths, but the result is upscaled to the
   // screen, and at 0.3 the blob edges read as blurry rather than clean.
-  /** Fixed resolution steps, highest first: the buffer only resizes between these. */
-  private static readonly STEPS = [0.55, 0.4, 0.28, 0.2, 0.14];
+  /**
+   * Fixed resolution steps, highest first: the buffer only resizes between these.
+   * The floor is deliberately high — dropping further did bound the cost, but the
+   * upscale made big territories visibly blurrier the larger they grew, which is
+   * the opposite of what growth should look like.
+   */
+  private static readonly STEPS = [0.55, 0.42, 0.3];
   /** Rough cap on field-evaluation pixels per frame, before scaling down. */
   private static readonly PIXEL_BUDGET = 6e5;
 

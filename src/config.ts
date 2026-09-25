@@ -76,17 +76,21 @@ export const NODE_SPACING = 22; // min clearance between a new node and existing
  * Visual only: the fluid "aura" around each core grows with stored nutrients, and
  * auras of one owner merge into a single contiguous mass (metaballs).
  *
- * Deliberately huge, and growing much faster than a square root, so territory
- * spreads the way it did in the original: a colony that has eaten a fall cluster
- * covers most of a screen, and a network's colonies merge into one mass long
- * before they touch. Small nutrient counts still collapse back toward the dot.
+ * Sized so territory is modest at spawn and sprawling once you have eaten your
+ * starting cluster — by then a colony covers most of a screen and a network's
+ * colonies have merged into one mass, as in the original.
  *
- * 16 → 136, fresh eject 30 → 194, start 100 → 419, 300 → 905, 1000+ → capped.
+ * 30 (fresh colony) → 89, 100 (spawn) → 171, 300 → 312, 1000 → 643,
+ * 3000 (starting cluster eaten) → 1236, beyond that → capped.
+ *
+ * AURA_SCALE alone grows or shrinks all territory; the exponent sets how quickly
+ * a rich colony outgrows a poor one.
  */
+export const AURA_SCALE = 10;
 export const MAX_COLONY_AURA = 1600;
 
 export function colonyAura(nutrients: number): number {
-  return Math.min(MAX_COLONY_AURA, 40 + Math.max(0, nutrients) ** 0.75 * 12);
+  return Math.min(MAX_COLONY_AURA, 12 + Math.max(0, nutrients) ** 0.6 * AURA_SCALE);
 }
 
 export function fallAura(nutrients: number): number {

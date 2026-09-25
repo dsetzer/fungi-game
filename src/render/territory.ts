@@ -21,6 +21,8 @@ const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = cris
 const REACH = 1.9;
 /** How much darker a territory's outline is than its fill. */
 export const OUTLINE_DARKEN = 0.55;
+/** Outline thickness in buffer pixels — constant whatever the blob's size. */
+export const OUTLINE_PX = 3;
 const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
 
 const VERT = `#version 300 es
@@ -64,12 +66,18 @@ void main() {
   for (int i = 1; i <= MAX_LAYERS; i++) {
     int l = i == MAX_LAYERS ? 0 : i;
     float f = field[l];
-    float shape = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f);
+    // Widths come from how fast the field changes per pixel, so the edge and the
+    // outline are a fixed number of pixels wide on a small fall and on a huge
+    // territory alike. Fixed field-space widths made big blobs look bevelled,
+    // because the same band spans far more screen on a shallow gradient.
+    float fw = max(fwidth(f), 1e-5);
+    float shape = smoothstep(${THRESHOLD.toFixed(4)} - fw, ${THRESHOLD.toFixed(4)} + fw, f);
     float a = shape * uColors[l].a;
-    // One flat outline for every territory: a thin band at the edge in a darker
-    // shade of the same colour. Narrow and constant, so it reads as a drawn line
-    // rather than a bevel.
-    float edge = 1.0 - smoothstep(${(THRESHOLD + 0.012).toFixed(4)}, ${(THRESHOLD + 0.035).toFixed(4)}, f);
+    float edge = 1.0 - smoothstep(
+      ${THRESHOLD.toFixed(4)} + fw,
+      ${THRESHOLD.toFixed(4)} + fw * ${(1 + OUTLINE_PX).toFixed(1)},
+      f
+    );
     vec3 col = mix(uColors[l].rgb, uColors[l].rgb * ${OUTLINE_DARKEN.toFixed(2)}, edge);
     a = max(a, shape * edge * uColors[l].a);
     acc.rgb = col * a + acc.rgb * (1.0 - a);
@@ -254,8 +262,6 @@ class CpuTerritory {
     const layers = [...used].sort((a, b) => (a === 0 ? Infinity : a) - (b === 0 ? Infinity : b));
     this.lastLayers = layers;
     const px = this.image!.data;
-    const lo = THRESHOLD - 0.012;
-    const hi = THRESHOLD + 0.012;
     // Only the rows/columns any blob touched can be non-empty; clear the rest.
     px.fill(0);
     if (maxX < minX || maxY < minY) {
@@ -266,11 +272,19 @@ class CpuTerritory {
       const i = y * w + x;
       let r = 0, g = 0, bl = 0, a = 0;
       for (const l of layers) {
-        const f = this.fields[l][i];
+        const fieldL = this.fields[l];
+        const f = fieldL[i];
+        if (f <= THRESHOLD - 0.25) continue;
+        // Gradient by finite difference, standing in for the shader's fwidth():
+        // it makes the edge and outline a fixed pixel width at any blob size.
+        const gx = Math.abs((fieldL[i + 1] ?? f) - (fieldL[i - 1] ?? f)) / 2;
+        const gy = Math.abs((fieldL[i + w] ?? f) - (fieldL[i - w] ?? f)) / 2;
+        const fw = Math.max(gx + gy, 1e-5);
+        const lo = THRESHOLD - fw;
+        const hi = THRESHOLD + fw;
         if (f <= lo) continue;
         const s = f >= hi ? 1 : ((f - lo) / (hi - lo)) ** 2 * (3 - 2 * ((f - lo) / (hi - lo)));
-        // Same flat outline as the shader: a thin darker band at the edge.
-        const t = Math.min(1, Math.max(0, (f - hi) / (THRESHOLD + 0.035 - hi)));
+        const t = Math.min(1, Math.max(0, (f - hi) / (fw * OUTLINE_PX)));
         const edge = 1 - t * t * (3 - 2 * t);
         const la = Math.max(s * colors[l * 4 + 3], s * edge * colors[l * 4 + 3]);
         const dim = 1 - (1 - OUTLINE_DARKEN) * edge;

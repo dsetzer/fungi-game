@@ -102,6 +102,8 @@ Nutrient falls are resource patches scattered across the arena at the start of e
 
 > **Open item:** whether nutrient falls pay their own upkeep (Section 5) like player nodes do, or are exempt, is unconfirmed — this materially affects how valuable the sustaining trick above is and needs to be pinned down during prototyping.
 
+> **Prototype problem, unresolved:** the sustain trick currently *prints* nutrients rather than merely sustaining. A fall pays the 2x gain on the way out but takes only 1x on the way in, so feeding it at the pipeline rate while draining it at the pipeline rate leaves the pool flat and nets the player the difference — measured at +3/s from a 60-nutrient fall that never depletes, indefinitely. Sustaining should cost at least as much as it returns; the fix is presumably that the gain applies only to nutrients the fall actually had, not to nutrients passing through it. This needs settling before Section 6.7 is built, since powerups use the same loop.
+
 ### 6.5 Walls — Defensive Structures
 
 *Revised from screenshots of the original (`reference/original-1.webp`, `original-2.webp`).*
@@ -121,6 +123,24 @@ The combination of per-tick upkeep, resource-gated range, one-pipeline-per-pair,
 - **Circular pipelines:** looping nodes A → B → C → A doesn't create resources out of nothing (any node in the loop that sends out more than it receives still pays upkeep), but it pools risk — surplus at any point in the ring can reach any other point, so no single node in the loop starves early just because it happens to be furthest from the source. A ring can keep a whole cluster of nodes alive noticeably longer on a given nutrient reserve than the same nodes left as a simple tree.
 - **Overfed expansion chains:** when pushing a frontier of newly ejected nodes outward, deliberately feeding each link *more* than it needs to merely survive means it always has surplus left over to fund the next ejection — turning a fragile chain of nodes-on-a-timer into a self-sustaining advancing front.
 - **Funneling** (Section 6.3) for fast extraction from a single rich target.
+
+### 6.7 Powerups & Abilities *(planned, not built)*
+
+The game's objective loop is **explore, expand, feed, grow** — powerups are the layer that makes territory worth holding for reasons other than raw nutrient income.
+
+A powerup is a point scattered across the arena like a nutrient fall, with its own pool of nutrients, and it is used through exactly the same pipeline machinery — no new verbs, no menu. Two ways to use one:
+
+- **Consume it.** Drain it like a fall and take the pool as nutrients, until it's depleted and gone. The immediate, greedy option.
+- **Sustain it.** Feed nutrients *into* it in a loop instead — one pipeline in, one out (Section 6.4's sustaining trick) — and the powerup's ability stays active for as long as you keep the circulation going. Pay upkeep to hold a boost rather than cashing the point in once.
+
+That tension is the point: a contested powerup is worth fighting over precisely because holding one costs throughput every second, so a player sustaining several is spending real economy on it and is correspondingly vulnerable elsewhere.
+
+> **To pin down before building:**
+> - What the abilities actually *are* — this is the whole feature, and nothing is decided.
+> - Whether the boost applies to the colony wired into the powerup, or to the player's whole network.
+> - Whether a rival can take a sustained powerup from you: cut your feed line, drain the pool out from under you, or both.
+> - Whether consuming and sustaining are mutually exclusive, or whether a partly-drained powerup still works.
+> - Whether the ability is tied to the powerup's remaining pool (a stronger point gives a stronger boost) or is flat.
 
 ## 7. Win Condition & Match Flow
 
@@ -155,6 +175,7 @@ These are the gaps left after reconstructing the mechanics from memory — worth
 - Which mouse button performs the eject/pipeline drag, and what the other button is reserved for (Section 6).
 - Numeric tuning: starting nutrient pool, per-tick upkeep cost (confirmed to be 1, but is it always 1 regardless of node size?), ejected-node starting buffer, pipeline throughput rate, max pipelines per node, wall segment cost/length, the exact curve relating a node's resources to its ejection range / pipeline reach / physical radius.
 - Whether nutrient falls pay upkeep themselves (Section 6.4).
+- Everything under Section 6.7 — the powerup abilities themselves are entirely undecided.
 - Player count per match and whether AI fills empty slots.
 - Any meta-progression between matches, or is each round fully self-contained.
 - Whether an established pipeline can be destroyed/severed directly (e.g., an enemy cutting through it, or a wall built after the fact retroactively cutting it), or only made moot by killing an endpoint.
@@ -172,3 +193,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
+9. Powerups and abilities (Section 6.7) — blocked on the sustain-loop economy in 6.4.

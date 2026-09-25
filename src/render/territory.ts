@@ -12,7 +12,7 @@ import type { Camera } from "./camera";
 
 const MAX_BALLS = 256;
 const MAX_LAYERS = 8; // layer 0 = neutral falls, 1.. = player ids
-const RES_SCALE = 0.6; // offscreen resolution relative to device pixels
+const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = crisp edges)
 
 // Each ball contributes (1 - (d/R)^2)^2 inside R = r * REACH. Threshold is chosen
 // so a lone ball's edge lands exactly at r; nearby balls sum and bridge the gap.
@@ -56,7 +56,7 @@ void main() {
 
   vec4 acc = vec4(0.0);
   for (int l = 0; l < MAX_LAYERS; l++) {
-    float a = smoothstep(${(THRESHOLD - 0.04).toFixed(4)}, ${(THRESHOLD + 0.04).toFixed(4)}, field[l]) * uColors[l].a;
+    float a = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, field[l]) * uColors[l].a;
     acc.rgb = uColors[l].rgb * a + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
   }
@@ -164,7 +164,9 @@ class CpuTerritory {
   private image: ImageData | null = null;
   /** Layers that had field data last frame — only these need clearing. */
   private lastLayers: number[] = [];
-  private static readonly SCALE = 0.3; // grid resolution relative to CSS px
+  // Higher than it needs to be for the maths, but the result is upscaled to the
+  // screen, and at 0.3 the blob edges read as blurry rather than clean.
+  private static readonly SCALE = 0.55;
 
   render(world: World, camera: Camera, _timeMs: number, shown: (id: number) => boolean): void {
     const scale = CpuTerritory.SCALE;
@@ -220,8 +222,8 @@ class CpuTerritory {
     const layers = [...used].sort((a, b) => a - b);
     this.lastLayers = layers;
     const px = this.image!.data;
-    const lo = THRESHOLD - 0.04;
-    const hi = THRESHOLD + 0.04;
+    const lo = THRESHOLD - 0.012;
+    const hi = THRESHOLD + 0.012;
     // Only the rows/columns any blob touched can be non-empty; clear the rest.
     px.fill(0);
     if (maxX < minX || maxY < minY) {

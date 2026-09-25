@@ -9,6 +9,9 @@ import type { EntityId, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 
+/** Reveal circles are deduped onto this grid so standing still doesn't pile them up. */
+const REVEAL_GRID = 150;
+
 /**
  * Fog of war (§8): your colonies light up a radius around themselves. Ground you
  * have never seen is hidden; ground you have seen but aren't watching stays
@@ -27,8 +30,12 @@ export class FogOfWar {
   /** Vision circles for the current frame, in world space. */
   private eyes: { x: number; y: number; r: number }[] = [];
   private fog = document.createElement("canvas");
-  private mask = document.createElement("canvas");
-  private maskDirty = true;
+  /**
+   * Where you have looked, as circles rather than a pixel mask: drawn with hard
+   * edges so the fog border stays crisp at any zoom. Keyed on a coarse grid so
+   * standing still doesn't pile up duplicates.
+   */
+  private reveals = new Map<number, { x: number; y: number; r: number }>();
 
   constructor(radius: number) {
     this.radius = radius;
@@ -45,7 +52,16 @@ export class FogOfWar {
       const r = Math.max(VISION_MIN, world.reachOf(n) * VISION_REACH_SCALE);
       this.eyes.push({ x: n.x, y: n.y, r });
       this.markExplored(n.x, n.y, r);
+      this.remember(n.x, n.y, r);
     }
+  }
+
+  private remember(x: number, y: number, r: number): void {
+    const gx = Math.round(x / REVEAL_GRID);
+    const gy = Math.round(y / REVEAL_GRID);
+    const key = gx * 100_000 + gy;
+    const seen = this.reveals.get(key);
+    if (!seen || seen.r < r) this.reveals.set(key, { x, y, r });
   }
 
   private markExplored(x: number, y: number, r: number): void {
@@ -58,44 +74,13 @@ export class FogOfWar {
         const wx = this.origin + (gx + 0.5) * this.cell;
         const wy = this.origin + (gy + 0.5) * this.cell;
         if (Math.hypot(wx - x, wy - y) > r + this.cell * 0.5) continue;
-        const i = gy * this.n + gx;
-        if (!this.explored[i]) {
-          this.explored[i] = 1;
-          this.maskDirty = true;
-        }
+        this.explored[gy * this.n + gx] = 1;
       }
     }
   }
 
   private idx(v: number): number {
     return Math.min(this.n - 1, Math.max(0, Math.floor((v - this.origin) / this.cell)));
-  }
-
-  /**
-   * One pixel per explored cell, blurred in mask space so the upscaled border is
-   * soft. Rebuilt only when new ground is explored, not per frame.
-   */
-  private maskCanvas(): HTMLCanvasElement {
-    if (!this.maskDirty) return this.mask;
-    this.maskDirty = false;
-    const src = document.createElement("canvas");
-    src.width = this.n;
-    src.height = this.n;
-    const sctx = src.getContext("2d")!;
-    const img = sctx.createImageData(this.n, this.n);
-    for (let i = 0; i < this.explored.length; i++) {
-      if (this.explored[i]) img.data[i * 4 + 3] = 255;
-    }
-    sctx.putImageData(img, 0, 0);
-
-    this.mask.width = this.n;
-    this.mask.height = this.n;
-    const ctx = this.mask.getContext("2d")!;
-    ctx.clearRect(0, 0, this.n, this.n);
-    ctx.filter = "blur(0.8px)";
-    ctx.drawImage(src, 0, 0);
-    ctx.filter = "none";
-    return this.mask;
   }
 
   /** True while one of your colonies can currently see this point. */
@@ -125,10 +110,8 @@ export class FogOfWar {
 
   /**
    * Grey overlay: opaque where unexplored, dimmed where remembered, clear in sight.
-   *
-   * Drawn at a fraction of the screen resolution and scaled up. Fog is soft by
-   * design, so the lost detail is invisible, while the full-resolution version
-   * cost ~40ms a frame in compositing passes — the whole frame budget.
+   * Every edge is a hard-edged circle — no blur, no gradient — so the fog border
+   * stays as sharp as the rest of the art at any zoom.
    */
   draw(ctx: CanvasRenderingContext2D, camera: Camera, color: string): void {
     const dpr = window.devicePixelRatio || 1;
@@ -151,31 +134,33 @@ export class FogOfWar {
     const toScreenX = (x: number) => (x - camera.x) * k + w / 2;
     const toScreenY = (y: number) => (y - camera.y) * k + h / 2;
 
-    // Thin the fog over remembered ground. The memory is drawn as a low-res mask
-    // scaled up with smoothing and a blur, so the border is soft rather than tiled.
+    // Thin the fog over remembered ground: one hard-edged circle per place you
+    // have looked, culled to the view. Their union gives a clean rounded border.
     f.globalCompositeOperation = "destination-out";
     f.globalAlpha = 1 - FOG_EXPLORED_ALPHA;
-    f.imageSmoothingEnabled = true;
-    f.imageSmoothingQuality = "high";
-    // The mask is blurred once, in mask space, when it changes — blurring the
-    // full-screen canvas every frame was costing milliseconds per frame.
-    const span = this.n * this.cell * k;
-    f.drawImage(this.maskCanvas(), toScreenX(this.origin), toScreenY(this.origin), span, span);
+    f.fillStyle = "#000";
+    f.beginPath();
+    for (const r of this.reveals.values()) {
+      const cx = toScreenX(r.x);
+      const cy = toScreenY(r.y);
+      const rr = r.r * k;
+      if (cx + rr < 0 || cy + rr < 0 || cx - rr > w || cy - rr > h) continue;
+      f.moveTo(cx + rr, cy);
+      f.arc(cx, cy, rr, 0, Math.PI * 2);
+    }
+    f.fill();
     f.globalAlpha = 1;
 
-    // Clear it entirely inside vision, with a soft edge.
+    // Clear it entirely inside current vision.
+    f.beginPath();
     for (const e of this.eyes) {
       const cx = toScreenX(e.x);
       const cy = toScreenY(e.y);
       const r = e.r * k;
-      const grad = f.createRadialGradient(cx, cy, r * 0.75, cx, cy, r);
-      grad.addColorStop(0, "rgba(0,0,0,1)");
-      grad.addColorStop(1, "rgba(0,0,0,0)");
-      f.fillStyle = grad;
-      f.beginPath();
+      f.moveTo(cx + r, cy);
       f.arc(cx, cy, r, 0, Math.PI * 2);
-      f.fill();
     }
+    f.fill();
 
     // Outside the arena there is nothing to hide.
     f.globalCompositeOperation = "destination-out";

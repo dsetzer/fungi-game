@@ -10,8 +10,8 @@ import type { Camera } from "./camera";
  */
 
 /** Below this zoom the cached image is used (a texel is then ≤ ~1 screen pixel). */
-export const CACHE_BELOW_ZOOM = 0.32;
-const TEXTURE = 2560;
+export const CACHE_BELOW_ZOOM = 0.22;
+const TEXTURE = 3072;
 
 export class TerrainCache {
   private canvas: HTMLCanvasElement | null = null;

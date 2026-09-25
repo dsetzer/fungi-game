@@ -301,8 +301,35 @@ describe("pipes", () => {
     world.step();
     const [pipe] = world.pipes.values();
     expect(world.canReverse(me.id, pipe.id)).toEqual({ ok: false, reason: "not your hypha" });
-    // Cutting is the answer to being drained, and that I can do.
-    expect(world.canCut(me.id, pipe.id).ok).toBe(true);
+    // Nor can I cut it: the hypha is theirs, wherever its ends are. Being drained
+    // is answered by killing the colony on the far end, not by snipping the line.
+    expect(world.canCut(me.id, pipe.id)).toEqual({ ok: false, reason: "not your hypha" });
+    expect(world.canCut(rival.id, pipe.id).ok).toBe(true);
+  });
+
+  it("keeps rivals out of a colony's blob, but not out of a fall's", () => {
+    const { world, me } = soloWorld([], 4000);
+    const rival = world.addPlayer("rival", true);
+    const giant = world.addColony(rival.id, 0, 0, 25_000);
+    const blob = world.auraOf(giant);
+    // Modest enough that my own blob doesn't cover the target - my territory is
+    // mine to build in, so it would mask what this test is checking.
+    const mine = world.addColony(me.id, blob + 300, 0, 900);
+    // Well within my reach, but inside their territory.
+    const inside = { x: blob * 0.5, y: 0 };
+    expect(dist(mine.x, mine.y, inside.x, inside.y)).toBeLessThan(world.reachOf(mine));
+    expect(world.canEject(me.id, mine.id, inside)).toEqual({
+      ok: false, reason: "inside rival territory",
+    });
+    // Just outside the blob is fair ground.
+    expect(world.canEject(me.id, mine.id, { x: blob + 40, y: 0 }).ok).toBe(true);
+    // Their own territory is theirs to build in.
+    expect(world.canEject(rival.id, giant.id, inside).ok).toBe(true);
+    // A neutral fall holds no territory, or the best ground would be unplantable.
+    const fall = world.addFall(-1500, 0, 5000);
+    const byFall = { x: -1500 + world.auraOf(fall) * 0.5, y: 0 };
+    const near = world.addColony(me.id, -1500 + world.auraOf(fall) + 200, 0, 4000);
+    expect(world.canEject(me.id, near.id, byFall).ok).toBe(true);
   });
 
   it("refuses to reverse when the new source has no free output", () => {

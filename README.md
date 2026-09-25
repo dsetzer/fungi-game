@@ -44,7 +44,7 @@ server also hosts the client itself on port 8787.
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (drag *from* a rival to drain them) |
 | Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
 | Right-drag from your colony | Build a wall (⊢): the crossbar blocks line of sight |
-| Right-click your wall / a hypha | Demolish it / cut it |
+| Right-click your wall / your hypha | Demolish it / cut it (only hyphae you grew) |
 | Right-drag empty space, or WASD | Pan |
 | Mouse wheel | Zoom |
 | R | New round (solo only) |
@@ -118,7 +118,12 @@ noted.
   attackable. Falls are uncapped.
 - **Reversing:** only the player who grew a hypha can flip it — being drained is answered by
   cutting, not by commandeering the attacker's hypha.
-- **Cutting:** you can cut any hypha touching one of your nodes, including one draining you.
+- **Cutting:** only the player who grew a hypha can cut it, wherever its ends are. Being drained
+  is answered by killing the colony on the far end, walling the line, or out-draining them — not
+  by snipping the attacker's hypha off your own colony.
+- **Territory:** a colony's blob is that player's ground. Rivals can't plant inside it, only around
+  its edge, so reaching a node buried in a big network takes enough reach to span the blob. Neutral
+  falls hold no territory.
 - **Walls:** 15 nutrients, max 3 per colony, fixed 170-unit crossbar; a new crossbar severs hyphae
   already crossing it.
 - **Line of sight:** checked when a hypha is grown, and blocked by terrain and crossbars alike.

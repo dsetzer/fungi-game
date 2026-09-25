@@ -253,12 +253,27 @@ export class World {
     };
   }
 
-  /** Inside the arena, not in a wall, not overlapping any node. */
-  isFreeSpot(p: Vec, radius: number): boolean {
+  /**
+   * Inside the arena, not in a wall, not overlapping any node — and, when `player`
+   * is given, not inside a rival's territory.
+   *
+   * A colony's blob is that player's ground: rivals cannot plant inside it, only
+   * around its edge. Reaching a node buried in the middle of someone's territory
+   * therefore takes enough reach to span the blob, which is what makes a large
+   * network genuinely hard to walk into rather than merely large. Neutral falls
+   * hold no territory — their blobs never block — or the richest ground on the map
+   * would be unplantable.
+   *
+   * Pass player 0 (no player has that id) to treat every owned blob as a rival's,
+   * which is what someone who owns nothing yet, i.e. spawning, wants.
+   */
+  isFreeSpot(p: Vec, radius: number, player?: PlayerId): boolean {
     if (Math.hypot(p.x, p.y) + radius > this.arena.radius) return false;
     if (this.arena.index.discBlocks(p, radius)) return false;
     for (const n of this.nodes.values()) {
       if (dist(n.x, n.y, p.x, p.y) < this.radiusOf(n) + radius) return false;
+      if (player === undefined || n.owner == null || n.owner === player) continue;
+      if (dist(n.x, n.y, p.x, p.y) < this.auraOf(n)) return false;
     }
     return true;
   }
@@ -282,7 +297,7 @@ export class World {
     // Ejecting auto-grows a hypha parent → child, so the parent needs a free output.
     if (this.ownOutCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
-    if (!this.isFreeSpot(target, NODE_SPACING)) return NO("blocked");
+    if (!this.isFreeSpot(target, NODE_SPACING, player)) return NO("inside rival territory");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
     return YES;
   }
@@ -323,11 +338,16 @@ export class World {
     return YES;
   }
 
+  /**
+   * A hypha belongs to whoever grew it, wherever its ends are. Only they can cut
+   * it or flip it — being drained is not answered by snipping the attacker's
+   * hypha, but by killing the colony on the other end of it, walling the line, or
+   * out-draining them.
+   */
   canCut(player: PlayerId, pipeId: EntityId): CheckResult {
     const pipe = this.pipes.get(pipeId);
     if (!pipe) return NO("no such pipe");
-    const ends = [this.nodes.get(pipe.from), this.nodes.get(pipe.to)];
-    if (!ends.some((n) => n?.owner === player)) return NO("not your pipe");
+    if (pipe.owner !== player) return NO("not your hypha");
     return YES;
   }
 

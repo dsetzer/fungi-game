@@ -34,7 +34,7 @@ export function findSpawnPoint(world: World): Vec {
     const a = world.rng() * Math.PI * 2;
     const d = Math.sqrt(world.rng()) * world.arena.radius * 0.92;
     const p = { x: Math.cos(a) * d, y: Math.sin(a) * d };
-    if (!world.arena.isReachable(p) || !world.isFreeSpot(p, NODE_SPACING * 2)) continue;
+    if (!world.arena.isReachable(p) || !world.isFreeSpot(p, NODE_SPACING * 2, 0)) continue;
 
     const rival = nearest(colonies, p);
     if (rival !== null && rival < MIN_RIVAL_DISTANCE * 0.5) continue;

@@ -56,8 +56,11 @@ void main() {
     if (q < 1.0) field[layer] += (1.0 - q) * (1.0 - q);
   }
 
+  // Players first, then the neutral falls on top: a colony's territory must not
+  // bury the food inside it, which is what you are steering by.
   vec4 acc = vec4(0.0);
-  for (int l = 0; l < MAX_LAYERS; l++) {
+  for (int i = 1; i <= MAX_LAYERS; i++) {
+    int l = i == MAX_LAYERS ? 0 : i;
     float a = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, field[l]) * uColors[l].a;
     acc.rgb = uColors[l].rgb * a + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
@@ -233,7 +236,8 @@ class CpuTerritory {
     }
 
     const colors = layerColors(world, layerOf);
-    const layers = [...used].sort((a, b) => a - b);
+    // Same order as the shader: players first, neutral falls (layer 0) on top.
+    const layers = [...used].sort((a, b) => (a === 0 ? Infinity : a) - (b === 0 ? Infinity : b));
     this.lastLayers = layers;
     const px = this.image!.data;
     const lo = THRESHOLD - 0.012;

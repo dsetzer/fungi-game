@@ -86,11 +86,11 @@ export const NODE_SPACING = 22; // min clearance between a new node and existing
  * AURA_SCALE alone grows or shrinks all territory; the exponent sets how quickly
  * a rich colony outgrows a poor one.
  */
-export const AURA_SCALE = 10;
-export const MAX_COLONY_AURA = 1600;
+export const AURA_SCALE = 11;
+export const MAX_COLONY_AURA = 900;
 
 export function colonyAura(nutrients: number): number {
-  return Math.min(MAX_COLONY_AURA, 12 + Math.max(0, nutrients) ** 0.6 * AURA_SCALE);
+  return Math.min(MAX_COLONY_AURA, 12 + Math.max(0, nutrients) ** 0.55 * AURA_SCALE);
 }
 
 export function fallAura(nutrients: number): number {

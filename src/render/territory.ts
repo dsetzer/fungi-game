@@ -33,6 +33,7 @@ uniform vec4 uBalls[MAX_BALLS]; // x, y (buffer px, y-up), radius px, layer*1000
 uniform vec4 uColors[MAX_LAYERS]; // rgb, alpha
 uniform int uCount;
 uniform float uTime;
+uniform vec4 uBorder; // rim colour for the neutral fall layer
 out vec4 outColor;
 
 void main() {
@@ -61,14 +62,25 @@ void main() {
   vec4 acc = vec4(0.0);
   for (int i = 1; i <= MAX_LAYERS; i++) {
     int l = i == MAX_LAYERS ? 0 : i;
-    float a = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, field[l]) * uColors[l].a;
-    acc.rgb = uColors[l].rgb * a + acc.rgb * (1.0 - a);
+    float f = field[l];
+    float a = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f) * uColors[l].a;
+    vec3 col = uColors[l].rgb;
+    // Falls get a dark rim so food reads against pale terrain and player colour.
+    if (l == 0) {
+      float inside = smoothstep(${(THRESHOLD + 0.012).toFixed(4)}, ${(THRESHOLD + 0.09).toFixed(4)}, f);
+      col = mix(uBorder.rgb, col, inside);
+      a = max(a, smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f) * uBorder.a * (1.0 - inside));
+    }
+    acc.rgb = col * a + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
   }
   outColor = acc; // premultiplied
 }`;
 
-export const NEUTRAL_AURA = { rgb: [0.78, 0.78, 0.8], alpha: 0.75 };
+// Nutrient falls are warm and dark-rimmed: pale grey food on pale grey terrain
+// was unreadable.
+export const NEUTRAL_AURA = { rgb: [0.91, 0.74, 0.44], alpha: 0.9 };
+export const NEUTRAL_BORDER = { rgb: [0.45, 0.28, 0.1], alpha: 1 };
 export const PLAYER_AURA_ALPHA = 0.5;
 
 /** Picks the WebGL2 path when available, otherwise the CPU fallback. */
@@ -171,7 +183,8 @@ class CpuTerritory {
   private lastLayers: number[] = [];
   // Higher than it needs to be for the maths, but the result is upscaled to the
   // screen, and at 0.3 the blob edges read as blurry rather than clean.
-  private static readonly SCALE = 0.55;
+  /** Fixed resolution steps, highest first: the buffer only resizes between these. */
+  private static readonly STEPS = [0.55, 0.4, 0.28, 0.2, 0.14];
   /** Rough cap on field-evaluation pixels per frame, before scaling down. */
   private static readonly PIXEL_BUDGET = 6e5;
 
@@ -183,10 +196,11 @@ class CpuTerritory {
     const cssBalls = collectBalls(world, camera, 1, camera.width, camera.height, shown, layerOf);
     let touched = 0;
     for (const b of cssBalls) touched += (2 * b.r * REACH) ** 2;
-    const scale = Math.min(
-      CpuTerritory.SCALE,
-      Math.max(0.12, Math.sqrt(CpuTerritory.PIXEL_BUDGET / Math.max(1, touched))),
-    );
+    // Snap to fixed steps. Recomputing a continuous scale every frame resized the
+    // buffer constantly, which flickered — the resolution must only change when it
+    // crosses a step, not with every wobble in how much blob is on screen.
+    const wanted = Math.sqrt(CpuTerritory.PIXEL_BUDGET / Math.max(1, touched));
+    const scale = CpuTerritory.STEPS.find((s) => s <= wanted) ?? CpuTerritory.STEPS.at(-1)!;
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
     if (this.canvas.width !== w || this.canvas.height !== h || !this.image) {
@@ -255,10 +269,22 @@ class CpuTerritory {
         const f = this.fields[l][i];
         if (f <= lo) continue;
         const s = f >= hi ? 1 : ((f - lo) / (hi - lo)) ** 2 * (3 - 2 * ((f - lo) / (hi - lo)));
-        const la = s * colors[l * 4 + 3];
-        r = colors[l * 4] * la + r * (1 - la);
-        g = colors[l * 4 + 1] * la + g * (1 - la);
-        bl = colors[l * 4 + 2] * la + bl * (1 - la);
+        let la = s * colors[l * 4 + 3];
+        let cr = colors[l * 4];
+        let cg = colors[l * 4 + 1];
+        let cb = colors[l * 4 + 2];
+        if (l === 0) {
+          // Dark rim on falls, matching the shader: food must read against terrain.
+          const t = Math.min(1, Math.max(0, (f - hi) / (THRESHOLD + 0.09 - hi)));
+          const inside = t * t * (3 - 2 * t);
+          cr = NEUTRAL_BORDER.rgb[0] + (cr - NEUTRAL_BORDER.rgb[0]) * inside;
+          cg = NEUTRAL_BORDER.rgb[1] + (cg - NEUTRAL_BORDER.rgb[1]) * inside;
+          cb = NEUTRAL_BORDER.rgb[2] + (cb - NEUTRAL_BORDER.rgb[2]) * inside;
+          la = Math.max(la, s * NEUTRAL_BORDER.alpha * (1 - inside));
+        }
+        r = cr * la + r * (1 - la);
+        g = cg * la + g * (1 - la);
+        bl = cb * la + bl * (1 - la);
         a = la + a * (1 - la);
       }
       // ImageData is straight (not premultiplied) alpha.
@@ -316,7 +342,7 @@ class GpuTerritory {
     }
     this.prog = prog;
     gl.useProgram(prog);
-    for (const name of ["uBalls", "uColors", "uCount", "uTime"]) {
+    for (const name of ["uBalls", "uColors", "uCount", "uTime", "uBorder"]) {
       this.loc[name] = gl.getUniformLocation(prog, name);
     }
     // Fullscreen triangle.
@@ -357,6 +383,7 @@ class GpuTerritory {
     gl.uniform4fv(this.loc.uColors, layerColors(world, layerOf));
     gl.uniform1i(this.loc.uCount, count);
     gl.uniform1f(this.loc.uTime, timeMs / 1000);
+    gl.uniform4fv(this.loc.uBorder, [...NEUTRAL_BORDER.rgb, NEUTRAL_BORDER.alpha]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
   }

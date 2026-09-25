@@ -167,8 +167,11 @@ export class World {
 
   // ---------- queries ----------
 
+  /** By id, not by index: online, player ids don't start at 1 or run contiguously. */
   player(id: PlayerId | null): Player | undefined {
-    return id == null ? undefined : this.players[id - 1];
+    if (id == null) return undefined;
+    for (const p of this.players) if (p.id === id) return p;
+    return undefined;
   }
 
   /** Nodes are points; this is the fixed core used for hit-testing and spacing. */

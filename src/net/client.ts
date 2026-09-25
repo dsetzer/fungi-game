@@ -159,12 +159,13 @@ export class NetClient {
       });
     }
 
-    // Keep the local player list in sync so colours and names resolve.
+    // Keep the local player list in sync so colours and names resolve. Kept dense:
+    // server ids don't start at 1, and holes would break anything iterating it.
     world.players.length = 0;
     for (const p of snap.players) {
-      world.players[p.id - 1] = {
+      world.players.push({
         id: p.id, name: p.name, color: p.color, isBot: false, alive: p.alive, score: p.score,
-      };
+      });
     }
     world.tick = snap.tick;
   }

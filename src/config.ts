@@ -50,6 +50,8 @@ export const VISION_REACH_SCALE = 1.15; // vision as a multiple of a colony's re
 export const VISION_MIN = 520;
 export const FOG_CELL = 240; // resolution of the explored-ground memory
 export const FOG_EXPLORED_ALPHA = 0.28; // how much fog remains over remembered ground
+// Fog is soft, so it renders at a fraction of screen resolution and is scaled up.
+export const FOG_RENDER_SCALE = 0.34;
 
 // Multiplayer rounds
 export const ROUND_SECONDS = 600;

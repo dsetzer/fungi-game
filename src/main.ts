@@ -88,6 +88,7 @@ function restartSolo(): void {
 
 window.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "r" && solo) restartSolo();
+  if (e.key.toLowerCase() === "f") renderer.showPerf = !renderer.showPerf;
 });
 window.addEventListener("resize", () => renderer.resize());
 renderer.resize();
@@ -151,6 +152,8 @@ const formatTime = (s: number) =>
 // snapshots; offline we step the local match ourselves.
 let last = performance.now();
 let acc = 0;
+let reportedError = false;
+let lastHud = 0;
 function frame(now: number): void {
   const dt = Math.min(250, now - last);
   last = now;
@@ -159,14 +162,33 @@ function frame(now: number): void {
     if (!net.world && solo) stepMatch(solo);
     acc -= TICK_MS;
   }
-  centreOnHome();
-  input.update(dt);
-  renderer.draw(currentWorld(), input, now, currentPlayer());
-  updateHud();
+  // One bad frame must never stop the loop: before this guard, a render error
+  // meant requestAnimationFrame was never called again and the game froze.
+  try {
+    centreOnHome();
+    input.update(dt);
+    renderer.draw(currentWorld(), input, now, currentPlayer());
+    // The HUD rebuilds its DOM, so it runs a few times a second, not every frame.
+    if (now - lastHud > 200) {
+      lastHud = now;
+      updateHud();
+    }
+  } catch (err) {
+    if (!reportedError) {
+      reportedError = true;
+      console.error("render error (continuing):", err);
+    }
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
-  Object.assign(window, { game: { get world() { return currentWorld(); }, net, get solo() { return solo; } } });
+  Object.assign(window, {
+    game: {
+      get world() { return currentWorld(); },
+      get player() { return currentPlayer(); },
+      net, renderer, camera, input, get perf() { return renderer.perf; }, get solo() { return solo; },
+    },
+  });
 }

@@ -5,6 +5,7 @@ import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
+import { TerrainCache } from "./terrain";
 import { TerritoryLayer } from "./territory";
 
 const COLORS = {
@@ -25,6 +26,7 @@ const DEATH_WARN_SECONDS = 20;
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private territory = new TerritoryLayer();
+  private terrain = new TerrainCache();
   /** Recreated when the round does, so a new arena starts fully fogged. */
   private fog: { arena: World["arena"]; fog: FogOfWar } | null = null;
 
@@ -44,6 +46,7 @@ export class Renderer {
 
   draw(world: World, input: Input, timeMs: number, player: number): void {
     const { ctx, camera } = this;
+    const t0 = performance.now();
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = COLORS.outside;
@@ -60,10 +63,13 @@ export class Renderer {
     fog.update(world, player);
     const seen = fog.visibleNodes(world, player);
     const shown = (id: number) => seen.has(id);
+    const tFog1 = performance.now();
 
     this.drawFloor(world);
     this.drawAuras(world, timeMs, shown);
+    const tAuras = performance.now();
     this.drawTerrain(world);
+    const tTerrain = performance.now();
     for (const b of world.barriers.values()) {
       if (b.owner !== player && !fog.isVisible(b.x, b.y)) continue;
       const color = world.player(b.owner)?.color ?? "#888";
@@ -84,7 +90,48 @@ export class Renderer {
     }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
+    const tEntities = performance.now();
     fog.draw(ctx, camera, COLORS.fog);
+    const tEnd = performance.now();
+
+    const p = this.perf;
+    const ema = (was: number, now: number) => was * 0.9 + now * 0.1;
+    p.vision = ema(p.vision, tFog1 - t0);
+    p.auras = ema(p.auras, tAuras - tFog1);
+    p.terrain = ema(p.terrain, tTerrain - tAuras);
+    p.entities = ema(p.entities, tEntities - tTerrain);
+    p.fog = ema(p.fog, tEnd - tEntities);
+    p.frame = ema(p.frame, tEnd - t0);
+    p.gpuAuras = this.territory.usingGpu;
+    if (this.showPerf) this.drawPerf();
+  }
+
+  /** Rolling per-stage render cost in ms — toggle the overlay with F. */
+  readonly perf = { vision: 0, auras: 0, terrain: 0, entities: 0, fog: 0, frame: 0, gpuAuras: false, walls: 0 };
+  showPerf = false;
+
+  private drawPerf(): void {
+    const { ctx, camera } = this;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const p = this.perf;
+    const lines = [
+      `frame ${p.frame.toFixed(1)}ms`,
+      `vision ${p.vision.toFixed(1)}`,
+      `auras ${p.auras.toFixed(1)} ${p.gpuAuras ? "(gpu)" : "(cpu)"}`,
+      `terrain ${p.terrain.toFixed(1)} · ${p.walls} circles`,
+      `entities ${p.entities.toFixed(1)}`,
+      `fog ${p.fog.toFixed(1)}`,
+    ];
+    ctx.font = "12px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    lines.forEach((line, i) => {
+      ctx.fillStyle = "#0009";
+      ctx.fillText(line, camera.width - 10, 10 + i * 15);
+    });
+    ctx.restore();
   }
 
   /** Stem from the colony to the crossbar, drawn as a ⊢ like the original. */
@@ -151,6 +198,11 @@ export class Renderer {
   /** Drawn over the auras so terrain visibly occludes territory. */
   private drawTerrain(world: World): void {
     const { ctx, camera } = this;
+    if (this.terrain.shouldUse(camera)) {
+      this.perf.walls = 0; // one blit instead of thousands of circles
+      this.terrain.blit(ctx, world.arena, COLORS.wallEdge, COLORS.wallFill);
+      return;
+    }
     // The cave system is thousands of circles, so only draw what's on screen.
     const halfW = camera.width / 2 / camera.zoom;
     const halfH = camera.height / 2 / camera.zoom;
@@ -158,6 +210,7 @@ export class Renderer {
       camera.x - halfW, camera.y - halfH,
       camera.x + halfW, camera.y + halfH,
     );
+    this.perf.walls = visible.length;
     // Two passes (slightly larger darker circles underneath) give the merged
     // clusters a single soft outline, like a cloud.
     for (const [pad, color] of [[3, COLORS.wallEdge], [0, COLORS.wallFill]] as const) {

@@ -1,4 +1,10 @@
-import { FOG_CELL, FOG_EXPLORED_ALPHA, VISION_MIN, VISION_REACH_SCALE } from "../config";
+import {
+  FOG_CELL,
+  FOG_EXPLORED_ALPHA,
+  FOG_RENDER_SCALE,
+  VISION_MIN,
+  VISION_REACH_SCALE,
+} from "../config";
 import type { EntityId, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
@@ -65,18 +71,30 @@ export class FogOfWar {
     return Math.min(this.n - 1, Math.max(0, Math.floor((v - this.origin) / this.cell)));
   }
 
-  /** One pixel per explored cell; rebuilt only when something new is explored. */
+  /**
+   * One pixel per explored cell, blurred in mask space so the upscaled border is
+   * soft. Rebuilt only when new ground is explored, not per frame.
+   */
   private maskCanvas(): HTMLCanvasElement {
     if (!this.maskDirty) return this.mask;
     this.maskDirty = false;
-    this.mask.width = this.n;
-    this.mask.height = this.n;
-    const ctx = this.mask.getContext("2d")!;
-    const img = ctx.createImageData(this.n, this.n);
+    const src = document.createElement("canvas");
+    src.width = this.n;
+    src.height = this.n;
+    const sctx = src.getContext("2d")!;
+    const img = sctx.createImageData(this.n, this.n);
     for (let i = 0; i < this.explored.length; i++) {
       if (this.explored[i]) img.data[i * 4 + 3] = 255;
     }
-    ctx.putImageData(img, 0, 0);
+    sctx.putImageData(img, 0, 0);
+
+    this.mask.width = this.n;
+    this.mask.height = this.n;
+    const ctx = this.mask.getContext("2d")!;
+    ctx.clearRect(0, 0, this.n, this.n);
+    ctx.filter = "blur(0.8px)";
+    ctx.drawImage(src, 0, 0);
+    ctx.filter = "none";
     return this.mask;
   }
 
@@ -105,11 +123,18 @@ export class FogOfWar {
     return out;
   }
 
-  /** Grey overlay: opaque where unexplored, dimmed where remembered, clear in sight. */
+  /**
+   * Grey overlay: opaque where unexplored, dimmed where remembered, clear in sight.
+   *
+   * Drawn at a fraction of the screen resolution and scaled up. Fog is soft by
+   * design, so the lost detail is invisible, while the full-resolution version
+   * cost ~40ms a frame in compositing passes — the whole frame budget.
+   */
   draw(ctx: CanvasRenderingContext2D, camera: Camera, color: string): void {
     const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(1, Math.round(camera.width));
-    const h = Math.max(1, Math.round(camera.height));
+    const scale = FOG_RENDER_SCALE;
+    const w = Math.max(1, Math.round(camera.width * scale));
+    const h = Math.max(1, Math.round(camera.height * scale));
     if (this.fog.width !== w || this.fog.height !== h) {
       this.fog.width = w;
       this.fog.height = h;
@@ -121,8 +146,10 @@ export class FogOfWar {
     f.clearRect(0, 0, w, h);
     f.fillRect(0, 0, w, h);
 
-    const toScreenX = (x: number) => (x - camera.x) * camera.zoom + camera.width / 2;
-    const toScreenY = (y: number) => (y - camera.y) * camera.zoom + camera.height / 2;
+    // World → fog-buffer pixels (screen pixels scaled down by FOG_RENDER_SCALE).
+    const k = camera.zoom * scale;
+    const toScreenX = (x: number) => (x - camera.x) * k + w / 2;
+    const toScreenY = (y: number) => (y - camera.y) * k + h / 2;
 
     // Thin the fog over remembered ground. The memory is drawn as a low-res mask
     // scaled up with smoothing and a blur, so the border is soft rather than tiled.
@@ -130,17 +157,17 @@ export class FogOfWar {
     f.globalAlpha = 1 - FOG_EXPLORED_ALPHA;
     f.imageSmoothingEnabled = true;
     f.imageSmoothingQuality = "high";
-    f.filter = `blur(${Math.max(1, this.cell * camera.zoom * 0.4)}px)`;
-    const span = this.n * this.cell * camera.zoom;
+    // The mask is blurred once, in mask space, when it changes — blurring the
+    // full-screen canvas every frame was costing milliseconds per frame.
+    const span = this.n * this.cell * k;
     f.drawImage(this.maskCanvas(), toScreenX(this.origin), toScreenY(this.origin), span, span);
-    f.filter = "none";
     f.globalAlpha = 1;
 
     // Clear it entirely inside vision, with a soft edge.
     for (const e of this.eyes) {
       const cx = toScreenX(e.x);
       const cy = toScreenY(e.y);
-      const r = e.r * camera.zoom;
+      const r = e.r * k;
       const grad = f.createRadialGradient(cx, cy, r * 0.75, cx, cy, r);
       grad.addColorStop(0, "rgba(0,0,0,1)");
       grad.addColorStop(1, "rgba(0,0,0,0)");
@@ -154,7 +181,7 @@ export class FogOfWar {
     f.globalCompositeOperation = "destination-out";
     f.beginPath();
     f.rect(0, 0, w, h);
-    f.arc(toScreenX(0), toScreenY(0), this.radius * camera.zoom, 0, Math.PI * 2);
+    f.arc(toScreenX(0), toScreenY(0), this.radius * k, 0, Math.PI * 2);
     f.fill("evenodd");
 
     ctx.save();

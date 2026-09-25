@@ -1,3 +1,4 @@
+import type { PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 
@@ -69,6 +70,8 @@ export const PLAYER_AURA_ALPHA = 0.5;
 export class TerritoryLayer {
   private gpu = new GpuTerritory();
   private cpu: CpuTerritory | null = null;
+  /** False when the WebGL2 path is unavailable and the CPU fallback is in use. */
+  usingGpu = false;
 
   /**
    * Renders the frame; returns the canvas to composite over the viewport.
@@ -80,7 +83,11 @@ export class TerritoryLayer {
     timeMs: number,
     shown: (id: number) => boolean = () => true,
   ): HTMLCanvasElement {
-    if (this.gpu.available && this.gpu.render(world, camera, timeMs, shown)) return this.gpu.canvas;
+    if (this.gpu.available && this.gpu.render(world, camera, timeMs, shown)) {
+      this.usingGpu = true;
+      return this.gpu.canvas;
+    }
+    this.usingGpu = false;
     this.cpu ??= new CpuTerritory();
     this.cpu.render(world, camera, timeMs, shown);
     return this.cpu.canvas;
@@ -103,11 +110,12 @@ function collectBalls(
   w: number,
   h: number,
   shown: (id: number) => boolean,
+  layerOf: (id: PlayerId) => number,
 ): Ball[] {
   const out: Ball[] = [];
   const k = camera.zoom * scale;
   for (const n of world.nodes.values()) {
-    const layer = n.owner ?? 0;
+    const layer = n.owner == null ? 0 : layerOf(n.owner);
     if (layer >= MAX_LAYERS || !shown(n.id)) continue;
     const r = world.auraOf(n) * k;
     const x = ((n.x - camera.x) * camera.zoom + camera.width / 2) * scale;
@@ -120,14 +128,29 @@ function collectBalls(
   return out;
 }
 
-function layerColors(world: World): Float32Array {
+function layerColors(world: World, layerOf: (id: PlayerId) => number): Float32Array {
   const colors = new Float32Array(MAX_LAYERS * 4);
   colors.set([...NEUTRAL_AURA.rgb, NEUTRAL_AURA.alpha], 0);
   for (const p of world.players) {
-    if (p.id >= MAX_LAYERS) break;
-    colors.set([...hexToRgb(p.color), PLAYER_AURA_ALPHA], p.id * 4);
+    const layer = layerOf(p.id);
+    if (layer > 0 && layer < MAX_LAYERS) colors.set([...hexToRgb(p.color), PLAYER_AURA_ALPHA], layer * 4);
   }
   return colors;
+}
+
+/**
+ * Player ids are unbounded online (they climb as people join), but the shader has
+ * a fixed number of layers — so ids are packed into layers 1..MAX_LAYERS-1 by the
+ * order they appear, with layer 0 reserved for neutral falls.
+ */
+function layerAssigner(world: World): (id: PlayerId) => number {
+  const layers = new Map<PlayerId, number>();
+  let next = 1;
+  for (const p of world.players) {
+    if (next >= MAX_LAYERS) break;
+    layers.set(p.id, next++);
+  }
+  return (id) => layers.get(id) ?? 0;
 }
 
 /**
@@ -139,9 +162,11 @@ class CpuTerritory {
   private ctx = this.canvas.getContext("2d")!;
   private fields: Float32Array[] = [];
   private image: ImageData | null = null;
+  /** Layers that had field data last frame — only these need clearing. */
+  private lastLayers: number[] = [];
   private static readonly SCALE = 0.3; // grid resolution relative to CSS px
 
-  render(world: World, camera: Camera, timeMs: number, shown: (id: number) => boolean): void {
+  render(world: World, camera: Camera, _timeMs: number, shown: (id: number) => boolean): void {
     const scale = CpuTerritory.SCALE;
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
@@ -150,12 +175,19 @@ class CpuTerritory {
       this.canvas.height = h;
       this.image = this.ctx.createImageData(w, h);
       this.fields = Array.from({ length: MAX_LAYERS }, () => new Float32Array(w * h));
+      this.lastLayers = this.fields.map((_, i) => i);
     }
-    for (const f of this.fields) f.fill(0);
+    // Clearing all eight field buffers each frame is wasted work; only the layers
+    // that had anything in them last frame need resetting.
+    for (const l of this.lastLayers) this.fields[l].fill(0);
 
-    const t = timeMs / 1000;
     const used = new Set<number>();
-    for (const b of collectBalls(world, camera, scale, w, h, shown)) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    const layerOf = layerAssigner(world);
+    for (const b of collectBalls(world, camera, scale, w, h, shown, layerOf)) {
       used.add(b.layer);
       const field = this.fields[b.layer];
       const maxR = b.r * REACH * 1.08; // wobble headroom
@@ -163,29 +195,41 @@ class CpuTerritory {
       const x1 = Math.min(w - 1, Math.ceil(b.x + maxR));
       const y0 = Math.max(0, Math.floor(b.y - maxR));
       const y1 = Math.min(h - 1, Math.ceil(b.y + maxR));
+      // No per-pixel wobble here: an atan2 and two sines per pixel per blob cost
+      // milliseconds a frame. The GPU path keeps the wobble; this fallback trades
+      // it for frame rate, and the merged shape is what carries the look anyway.
+      const R = b.r * REACH;
+      const invR2 = 1 / (R * R);
+      if (x0 < minX) minX = x0;
+      if (x1 > maxX) maxX = x1;
+      if (y0 < minY) minY = y0;
+      if (y1 > maxY) maxY = y1;
       for (let y = y0; y <= y1; y++) {
         const dy = y + 0.5 - b.y;
+        const row = y * w;
+        const dy2 = dy * dy;
         for (let x = x0; x <= x1; x++) {
           const dx = x + 0.5 - b.x;
-          // Screen y is down here, the shader's is up; flip the angle to match.
-          const ang = Math.atan2(-dy, dx);
-          const wob =
-            1 +
-            0.05 * Math.sin(3 * ang + t * 0.6 + b.seed * 1.7) +
-            0.03 * Math.sin(5 * ang - t * 0.9 + b.seed * 0.9);
-          const R = b.r * REACH * wob;
-          const q = (dx * dx + dy * dy) / (R * R);
-          if (q < 1) field[y * w + x] += (1 - q) * (1 - q);
+          const q = (dx * dx + dy2) * invR2;
+          if (q < 1) field[row + x] += (1 - q) * (1 - q);
         }
       }
     }
 
-    const colors = layerColors(world);
+    const colors = layerColors(world, layerOf);
     const layers = [...used].sort((a, b) => a - b);
+    this.lastLayers = layers;
     const px = this.image!.data;
     const lo = THRESHOLD - 0.04;
     const hi = THRESHOLD + 0.04;
-    for (let i = 0, n = w * h; i < n; i++) {
+    // Only the rows/columns any blob touched can be non-empty; clear the rest.
+    px.fill(0);
+    if (maxX < minX || maxY < minY) {
+      this.ctx.putImageData(this.image!, 0, 0);
+      return;
+    }
+    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+      const i = y * w + x;
       let r = 0, g = 0, bl = 0, a = 0;
       for (const l of layers) {
         const f = this.fields[l][i];
@@ -279,7 +323,8 @@ class GpuTerritory {
     }
 
     // Balls in buffer pixel space, y flipped for gl_FragCoord.
-    const balls = collectBalls(world, camera, scale, w, h, shown);
+    const layerOf = layerAssigner(world);
+    const balls = collectBalls(world, camera, scale, w, h, shown, layerOf);
     // .w packs layer and the node's stable wobble seed: layer * 1000 + seed.
     balls.forEach((b, i) => this.balls.set([b.x, h - b.y, b.r, b.layer * 1000 + b.seed], i * 4));
     const count = balls.length;
@@ -289,7 +334,7 @@ class GpuTerritory {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.prog);
     gl.uniform4fv(this.loc.uBalls, this.balls);
-    gl.uniform4fv(this.loc.uColors, layerColors(world));
+    gl.uniform4fv(this.loc.uColors, layerColors(world, layerOf));
     gl.uniform1i(this.loc.uCount, count);
     gl.uniform1f(this.loc.uTime, timeMs / 1000);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

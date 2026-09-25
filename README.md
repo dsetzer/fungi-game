@@ -38,7 +38,8 @@ the server also hosts the client itself on port 8787.
 | Right-click your wall / a hypha | Demolish it / cut it |
 | Right-drag empty space / WASD | Pan |
 | Mouse wheel | Zoom |
-| R | New round |
+| R | New round (solo only) |
+| F | Toggle the render profiler (per-stage ms, and whether auras run on GPU or CPU) |
 
 ## Layout
 

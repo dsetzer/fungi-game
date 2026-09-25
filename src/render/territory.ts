@@ -19,6 +19,8 @@ const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = cris
 // How far a blob's influence extends past its own radius. Higher bridges gaps
 // between neighbouring colonies more readily, so a network reads as one mass.
 const REACH = 1.9;
+/** How much darker a territory's outline is than its fill. */
+export const OUTLINE_DARKEN = 0.55;
 const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
 
 const VERT = `#version 300 es
@@ -33,7 +35,6 @@ uniform vec4 uBalls[MAX_BALLS]; // x, y (buffer px, y-up), radius px, layer*1000
 uniform vec4 uColors[MAX_LAYERS]; // rgb, alpha
 uniform int uCount;
 uniform float uTime;
-uniform vec4 uBorder; // rim colour for the neutral fall layer
 out vec4 outColor;
 
 void main() {
@@ -63,14 +64,14 @@ void main() {
   for (int i = 1; i <= MAX_LAYERS; i++) {
     int l = i == MAX_LAYERS ? 0 : i;
     float f = field[l];
-    float a = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f) * uColors[l].a;
-    vec3 col = uColors[l].rgb;
-    // Falls get a dark rim so food reads against pale terrain and player colour.
-    if (l == 0) {
-      float inside = smoothstep(${(THRESHOLD + 0.012).toFixed(4)}, ${(THRESHOLD + 0.09).toFixed(4)}, f);
-      col = mix(uBorder.rgb, col, inside);
-      a = max(a, smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f) * uBorder.a * (1.0 - inside));
-    }
+    float shape = smoothstep(${(THRESHOLD - 0.012).toFixed(4)}, ${(THRESHOLD + 0.012).toFixed(4)}, f);
+    float a = shape * uColors[l].a;
+    // One flat outline for every territory: a thin band at the edge in a darker
+    // shade of the same colour. Narrow and constant, so it reads as a drawn line
+    // rather than a bevel.
+    float edge = 1.0 - smoothstep(${(THRESHOLD + 0.012).toFixed(4)}, ${(THRESHOLD + 0.035).toFixed(4)}, f);
+    vec3 col = mix(uColors[l].rgb, uColors[l].rgb * ${OUTLINE_DARKEN.toFixed(2)}, edge);
+    a = max(a, shape * edge * uColors[l].a);
     acc.rgb = col * a + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
   }
@@ -80,7 +81,6 @@ void main() {
 // Nutrient falls are warm and dark-rimmed: pale grey food on pale grey terrain
 // was unreadable.
 export const NEUTRAL_AURA = { rgb: [0.91, 0.74, 0.44], alpha: 0.9 };
-export const NEUTRAL_BORDER = { rgb: [0.45, 0.28, 0.1], alpha: 1 };
 export const PLAYER_AURA_ALPHA = 0.5;
 
 /** Picks the WebGL2 path when available, otherwise the CPU fallback. */
@@ -269,19 +269,14 @@ class CpuTerritory {
         const f = this.fields[l][i];
         if (f <= lo) continue;
         const s = f >= hi ? 1 : ((f - lo) / (hi - lo)) ** 2 * (3 - 2 * ((f - lo) / (hi - lo)));
-        let la = s * colors[l * 4 + 3];
-        let cr = colors[l * 4];
-        let cg = colors[l * 4 + 1];
-        let cb = colors[l * 4 + 2];
-        if (l === 0) {
-          // Dark rim on falls, matching the shader: food must read against terrain.
-          const t = Math.min(1, Math.max(0, (f - hi) / (THRESHOLD + 0.09 - hi)));
-          const inside = t * t * (3 - 2 * t);
-          cr = NEUTRAL_BORDER.rgb[0] + (cr - NEUTRAL_BORDER.rgb[0]) * inside;
-          cg = NEUTRAL_BORDER.rgb[1] + (cg - NEUTRAL_BORDER.rgb[1]) * inside;
-          cb = NEUTRAL_BORDER.rgb[2] + (cb - NEUTRAL_BORDER.rgb[2]) * inside;
-          la = Math.max(la, s * NEUTRAL_BORDER.alpha * (1 - inside));
-        }
+        // Same flat outline as the shader: a thin darker band at the edge.
+        const t = Math.min(1, Math.max(0, (f - hi) / (THRESHOLD + 0.035 - hi)));
+        const edge = 1 - t * t * (3 - 2 * t);
+        const la = Math.max(s * colors[l * 4 + 3], s * edge * colors[l * 4 + 3]);
+        const dim = 1 - (1 - OUTLINE_DARKEN) * edge;
+        const cr = colors[l * 4] * dim;
+        const cg = colors[l * 4 + 1] * dim;
+        const cb = colors[l * 4 + 2] * dim;
         r = cr * la + r * (1 - la);
         g = cg * la + g * (1 - la);
         bl = cb * la + bl * (1 - la);
@@ -342,7 +337,7 @@ class GpuTerritory {
     }
     this.prog = prog;
     gl.useProgram(prog);
-    for (const name of ["uBalls", "uColors", "uCount", "uTime", "uBorder"]) {
+    for (const name of ["uBalls", "uColors", "uCount", "uTime"]) {
       this.loc[name] = gl.getUniformLocation(prog, name);
     }
     // Fullscreen triangle.
@@ -383,7 +378,6 @@ class GpuTerritory {
     gl.uniform4fv(this.loc.uColors, layerColors(world, layerOf));
     gl.uniform1i(this.loc.uCount, count);
     gl.uniform1f(this.loc.uTime, timeMs / 1000);
-    gl.uniform4fv(this.loc.uBorder, [...NEUTRAL_BORDER.rgb, NEUTRAL_BORDER.alpha]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
   }

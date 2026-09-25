@@ -5,7 +5,7 @@ import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
-import { pipeControlPoint, quadPoint } from "./pipePath";
+import { pipeCurve, quadPoint, quadTangent } from "./pipePath";
 import { TerrainCache } from "./terrain";
 import { TerritoryLayer } from "./territory";
 
@@ -229,10 +229,12 @@ export class Renderer {
 
   private drawPipe(world: World, pipe: Pipe, timeMs: number, hovered: boolean): void {
     const { ctx } = this;
-    const a = world.nodes.get(pipe.from)!;
-    const b = world.nodes.get(pipe.to)!;
+    const src = world.nodes.get(pipe.from)!;
+    const dst = world.nodes.get(pipe.to)!;
     const color = world.player(pipe.owner)?.color ?? "#888";
-    const c = pipeControlPoint(a, b, pipe.id);
+    // Curve geometry is fixed by the node pair, so reversing turns the arrows
+    // around without the thread itself jumping to the other side.
+    const { a, b, c, flipped } = pipeCurve(src, dst, pipe.id, pipe.from, pipe.to);
 
     ctx.strokeStyle = color;
     ctx.globalAlpha = hovered ? 0.9 : 0.45;
@@ -243,16 +245,26 @@ export class Renderer {
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Nutrient particles travelling from → to.
+    // Arrowheads travelling the way the nutrients go.
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     const count = Math.max(2, Math.floor(len / 45));
     const phase = (timeMs / 1000) * 0.6;
+    const size = hovered ? 6 : 4.5;
     ctx.fillStyle = color;
     for (let i = 0; i < count; i++) {
-      const t = (phase + i / count) % 1;
+      const travelled = (phase + i / count) % 1;
+      const t = flipped ? 1 - travelled : travelled;
       const p = quadPoint(a, c, b, t);
+      const tan = quadTangent(a, c, b, t);
+      const m = Math.hypot(tan.x, tan.y) || 1;
+      // Point the head along the direction of flow, not along the curve's own order.
+      const dx = (tan.x / m) * (flipped ? -1 : 1);
+      const dy = (tan.y / m) * (flipped ? -1 : 1);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.moveTo(p.x + dx * size, p.y + dy * size);
+      ctx.lineTo(p.x - dx * size * 0.6 - dy * size * 0.55, p.y - dy * size * 0.6 + dx * size * 0.55);
+      ctx.lineTo(p.x - dx * size * 0.6 + dy * size * 0.55, p.y - dy * size * 0.6 - dx * size * 0.55);
+      ctx.closePath();
       ctx.fill();
     }
   }

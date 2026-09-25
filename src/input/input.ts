@@ -1,7 +1,4 @@
 import {
-  CAMERA_DRAG_LEAD,
-  CAMERA_DRAG_LEAD_MAX,
-  CAMERA_FLY_ON_DRAG,
   CAMERA_FLY_ON_EJECT,
   EJECT_FRACTION_DEFAULT,
   EJECT_FRACTION_MAX,
@@ -117,7 +114,7 @@ export class Input {
       const a = world.nodes.get(pipe.from);
       const b = world.nodes.get(pipe.to);
       if (!a || !b) continue;
-      const d = distToPipeSq(p, a, b, pipe.id);
+      const d = distToPipeSq(p, a, b, pipe.id, pipe.from, pipe.to);
       if (d < bestD) {
         bestD = d;
         best = pipe.id;
@@ -143,11 +140,7 @@ export class Input {
     const node = this.nodeAt(this.cursor);
     if (e.button === 0) {
       this.leftPress = { sx: e.offsetX, sy: e.offsetY };
-      if (node) {
-        this.drag = { from: node.id };
-        // Frame the colony being thrown from, so the throw is always on screen.
-        if (CAMERA_FLY_ON_DRAG && node.owner === this.player()) this.camera.flyTo(node.x, node.y);
-      }
+      if (node) this.drag = { from: node.id };
     } else if (e.button === 2) {
       const wallFrom = node && node.owner === this.player() ? node.id : null;
       this.right = { sx: e.offsetX, sy: e.offsetY, moved: false, wallFrom };
@@ -169,27 +162,7 @@ export class Input {
       }
     }
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);
-    this.leadCameraTowardAim();
   };
-
-  /**
-   * While aiming a throw, sit on the parent but slide part-way toward the cursor,
-   * so both the colony and where it is going stay in frame.
-   */
-  private leadCameraTowardAim(): void {
-    if (!CAMERA_FLY_ON_DRAG || !this.drag) return;
-    const from = this.getWorld().nodes.get(this.drag.from);
-    if (!from || from.owner !== this.player()) return;
-    const dx = this.cursor.x - from.x;
-    const dy = this.cursor.y - from.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) {
-      this.camera.flyTo(from.x, from.y);
-      return;
-    }
-    const lead = Math.min(len * CAMERA_DRAG_LEAD, CAMERA_DRAG_LEAD_MAX);
-    this.camera.flyTo(from.x + (dx / len) * lead, from.y + (dy / len) * lead);
-  }
 
   private onUp = (e: PointerEvent) => {
     const player = this.player();

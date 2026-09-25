@@ -9,8 +9,12 @@ import type { EntityId, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 
-/** Reveal circles are deduped onto this grid so standing still doesn't pile them up. */
-const REVEAL_GRID = 150;
+/**
+ * Reveal circles are deduped onto this grid. It is deliberately coarse relative
+ * to vision (520+): neighbours still overlap heavily, so the remembered area
+ * looks the same while far fewer circles are drawn each frame.
+ */
+const REVEAL_GRID = 420;
 
 /**
  * Fog of war (§8): your colonies light up a radius around themselves. Ground you
@@ -56,9 +60,24 @@ export class FogOfWar {
     }
   }
 
+  /**
+   * Records that this spot has been seen, as one circle on a coarse grid.
+   *
+   * Every remembered circle is redrawn each frame, so their count is a frame-rate
+   * cost that grows for the whole round. Two things keep it down: the grid is far
+   * coarser than the circles are wide (they still overlap heavily, so the union's
+   * shape barely changes), and a circle already swallowed by a neighbour is never
+   * stored at all.
+   */
   private remember(x: number, y: number, r: number): void {
     const gx = Math.round(x / REVEAL_GRID);
     const gy = Math.round(y / REVEAL_GRID);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const near = this.reveals.get((gx + dx) * 100_000 + (gy + dy));
+        if (near && Math.hypot(near.x - x, near.y - y) + r <= near.r) return; // already covered
+      }
+    }
     const key = gx * 100_000 + gy;
     const seen = this.reveals.get(key);
     if (!seen || seen.r < r) this.reveals.set(key, { x, y, r });

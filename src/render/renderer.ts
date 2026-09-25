@@ -11,10 +11,12 @@ import { TerritoryLayer } from "./territory";
 
 const COLORS = {
   outside: "#e9ecef",
-  wallEdge: "#ccd2d8",
-  wallFill: "#e7eaee",
+  // Terrain is deliberately cool and desaturated so the warm nutrient falls read
+  // against it; everything was previously a near-identical pale grey.
+  wallEdge: "#aeb8c6",
+  wallFill: "#d4dae3",
   floor: "#ffffff",
-  fallCore: "#a3a3aa",
+  fallCore: "#5c3a15",
   fog: "#c9ced4",
   reachRing: "#00000066",
   valid: "#2f9e44",

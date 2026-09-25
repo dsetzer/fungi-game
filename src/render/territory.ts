@@ -21,6 +21,19 @@ const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = cris
 const REACH = 1.9;
 const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
 
+/**
+ * The territory edge is a hard edge with a border, not a fade. Everything here is
+ * measured in *output* pixels and resolved at output resolution, so the edge is
+ * one pixel of antialiasing however large a territory grows or however far out the
+ * view is zoomed — the same treatment terrain gets from the canvas.
+ */
+const EDGE_AA_PX = 1;
+/** Border band drawn just inside the contour, in CSS pixels. */
+const BORDER_PX = 2.5;
+/** The border is the fill colour darkened, which keeps the flat palette. */
+const BORDER_DARKEN = 0.58;
+const BORDER_ALPHA = 0.95;
+
 const VERT = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -33,6 +46,7 @@ uniform vec4 uBalls[MAX_BALLS]; // x, y (buffer px, y-up), radius px, layer*1000
 uniform vec4 uColors[MAX_LAYERS]; // rgb, alpha
 uniform int uCount;
 uniform float uTime;
+uniform float uBorderPx;
 out vec4 outColor;
 
 void main() {
@@ -62,12 +76,19 @@ void main() {
   for (int i = 1; i <= MAX_LAYERS; i++) {
     int l = i == MAX_LAYERS ? 0 : i;
     float f = field[l];
-    // Flat fill with a crisp edge, no outline band. The edge width comes from how
-    // fast the field changes per pixel, so it stays a couple of pixels whatever
-    // the blob's size — a fixed field-space width made big blobs look bevelled.
+    // Signed distance from the contour, in pixels: dividing by how fast the field
+    // changes per pixel turns an arbitrary field value into a pixel count, so the
+    // edge and the border stay the same width at any blob size or zoom.
     float fw = max(fwidth(f), 1e-5);
-    float a = smoothstep(${THRESHOLD.toFixed(4)} - fw, ${THRESHOLD.toFixed(4)} + fw, f) * uColors[l].a;
-    acc.rgb = uColors[l].rgb * a + acc.rgb * (1.0 - a);
+    float dpx = (f - ${THRESHOLD.toFixed(4)}) / fw;
+    float outer = clamp(dpx / ${EDGE_AA_PX.toFixed(1)} + 0.5, 0.0, 1.0);
+    float inner = clamp((dpx - uBorderPx) / ${EDGE_AA_PX.toFixed(1)} + 0.5, 0.0, 1.0);
+    float aFill = inner * uColors[l].a;
+    float aBorder = (outer - inner) * ${BORDER_ALPHA.toFixed(2)};
+    // Fill and border cover disjoint bands, so their premultiplied colours add.
+    vec3 pre = uColors[l].rgb * aFill + uColors[l].rgb * ${BORDER_DARKEN.toFixed(2)} * aBorder;
+    float a = aFill + aBorder;
+    acc.rgb = pre + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
   }
   outColor = acc; // premultiplied
@@ -176,31 +197,41 @@ function layerAssigner(world: World): (id: PlayerId) => number {
 }
 
 /**
- * Same field maths as the shader, evaluated on a coarse grid on the CPU and
- * upscaled with smoothing. Only touches pixels inside each ball's reach.
+ * Same field maths as the shader, evaluated on a coarse grid on the CPU.
+ *
+ * The field is coarse but the *contour* is resolved at output resolution, which is
+ * the whole point: upscaling a thresholded low-resolution buffer was what softened
+ * the edges, and it got worse the more territory was on screen. Resolving the
+ * contour separately means the field's resolution costs shape fidelity — how
+ * faithfully the blob's outline is traced — and never sharpness.
  */
 class CpuTerritory {
   readonly canvas = document.createElement("canvas");
   private ctx = this.canvas.getContext("2d")!;
   private fields: Float32Array[] = [];
   private image: ImageData | null = null;
+  /** Output pixels, as premultiplied RGBA words. */
+  private out32: Uint32Array | null = null;
+  /** Per-field-texel verdict for the whole frame, one byte each (see resolve). */
+  private verdict = new Uint8Array(0);
+  /** Which layers cover a flat texel, and the colour word that resolves to. */
+  private flatKey = new Int32Array(0);
+  private flatWord = new Int32Array(0);
+  /** Output column -> field column, precomputed so the inner loop stays cheap. */
+  private colOfX = new Int32Array(0);
+  private fieldW = 0;
+  private fieldH = 0;
   /** Layers that had field data last frame — only these need clearing. */
   private lastLayers: number[] = [];
   /**
-   * Fixed resolution steps, highest first: the buffer only resizes between these.
+   * Fixed resolution steps for the *field*, highest first.
    *
-   * This is why the fallback's edges soften. The contour is computed one *buffer*
-   * pixel wide, but the buffer is upscaled to the screen, so the edge lands 1/step
-   * screen pixels wide — measured at 3.5px with a small territory and 6.2px once
-   * one fills the view, against ~3.3px for a hard-edged canvas arc. Growing, or
-   * zooming out, made the picture worse, which is exactly backwards.
-   *
-   * 1.0 and 0.75 are here so anything short of a screen-filling territory draws at
-   * or near full resolution and is genuinely crisp; the pixel budget still pulls
-   * the step down for the big cases, where there is no way to be both fast and
-   * sharp on a CPU. The real fix for those is the WebGL2 path (see `failure`).
+   * Since the contour is resolved at output resolution, this no longer controls
+   * sharpness at all — only how faithfully the blob's outline is traced. Dropping
+   * a step makes a big blob's curve very slightly rounder; it can never make an
+   * edge soft. That is what lets the field stay cheap.
    */
-  private static readonly STEPS = [1, 0.75, 0.55, 0.42, 0.3];
+  private static readonly STEPS = [0.75, 0.55, 0.42, 0.3];
   /**
    * Hard cap on field-evaluation pixels per frame. Because the step is chosen as
    * sqrt(BUDGET / touched), the work saturates at exactly this many pixels however
@@ -248,12 +279,33 @@ class CpuTerritory {
     const scale = this.step;
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
-    if (this.canvas.width !== w || this.canvas.height !== h || !this.image) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.image = this.ctx.createImageData(w, h);
+    // The canvas is full output resolution; only the field grid is coarse.
+    const dpr = window.devicePixelRatio || 1;
+    const outW = Math.max(1, Math.round(camera.width * dpr));
+    const outH = Math.max(1, Math.round(camera.height * dpr));
+    if (this.canvas.width !== outW || this.canvas.height !== outH || !this.image) {
+      this.canvas.width = outW;
+      this.canvas.height = outH;
+      this.image = this.ctx.createImageData(outW, outH);
+      this.out32 = new Uint32Array(this.image.data.buffer);
+      this.colOfX = new Int32Array(0); // force the column map to be rebuilt
+    }
+    if (this.fieldW !== w || this.fieldH !== h) {
+      this.fieldW = w;
+      this.fieldH = h;
       this.fields = Array.from({ length: MAX_LAYERS }, () => new Float32Array(w * h));
+      this.verdict = new Uint8Array(w * h);
+      this.flatKey = new Int32Array(w * h);
+      this.flatWord = new Int32Array(w * h);
       this.lastLayers = this.fields.map((_, i) => i);
+      this.colOfX = new Int32Array(0);
+    }
+    // Output column -> field column. Rebuilt only when either size changes.
+    if (this.colOfX.length !== outW) {
+      this.colOfX = new Int32Array(outW);
+      for (let x = 0; x < outW; x++) {
+        this.colOfX[x] = Math.min(w - 1, Math.max(0, Math.floor(((x + 0.5) / dpr) * scale)));
+      }
     }
     // Clearing all eight field buffers each frame is wasted work; only the layers
     // that had anything in them last frame need resetting.
@@ -298,44 +350,141 @@ class CpuTerritory {
     // Same order as the shader: players first, neutral falls (layer 0) on top.
     const layers = [...used].sort((a, b) => (a === 0 ? Infinity : a) - (b === 0 ? Infinity : b));
     this.lastLayers = layers;
-    const px = this.image!.data;
-    // Only the rows/columns any blob touched can be non-empty; clear the rest.
-    px.fill(0);
+    const out32 = this.out32!;
+    out32.fill(0);
+    // (bounded below to the union's bounding box; a full clear is one pass and
+    // cheaper than tracking the previous frame's extent)
     if (maxX < minX || maxY < minY) {
       this.ctx.putImageData(this.image!, 0, 0);
       return;
     }
-    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
-      const i = y * w + x;
-      let r = 0, g = 0, bl = 0, a = 0;
-      for (const l of layers) {
-        const fieldL = this.fields[l];
-        const f = fieldL[i];
-        if (f <= THRESHOLD - 0.25) continue;
-        // Gradient by finite difference, standing in for the shader's fwidth():
-        // it makes the edge and outline a fixed pixel width at any blob size.
-        const gx = Math.abs((fieldL[i + 1] ?? f) - (fieldL[i - 1] ?? f)) / 2;
-        const gy = Math.abs((fieldL[i + w] ?? f) - (fieldL[i - w] ?? f)) / 2;
-        const fw = Math.max(gx + gy, 1e-5);
-        const lo = THRESHOLD - fw;
-        const hi = THRESHOLD + fw;
-        if (f <= lo) continue;
-        const s = f >= hi ? 1 : ((f - lo) / (hi - lo)) ** 2 * (3 - 2 * ((f - lo) / (hi - lo)));
-        const la = s * colors[l * 4 + 3];
-        const cr = colors[l * 4];
-        const cg = colors[l * 4 + 1];
-        const cb = colors[l * 4 + 2];
-        r = cr * la + r * (1 - la);
-        g = cg * la + g * (1 - la);
-        bl = cb * la + bl * (1 - la);
-        a = la + a * (1 - la);
+
+    // One field texel spans this many output pixels; a signed distance in pixels
+    // therefore changes by at most this much from one texel to the next.
+    const pxPerTexel = dpr / scale;
+    const borderPx = BORDER_PX * dpr;
+    // How far from the contour a texel must be before every output pixel inside it
+    // is unambiguously interior or exterior, with a pixel of slack.
+    const slack = pxPerTexel + EDGE_AA_PX + 1;
+
+    // Pass 1, per texel: how far is it from each layer's contour? A texel is only
+    // worth resolving pixel by pixel if some layer's edge or border band runs
+    // through it; everywhere else the colour is constant and can be written flat.
+    // OUT = nothing here, FLAT = constant colour, EDGE = resolve each pixel.
+    const OUT = 0, FLAT = 1, EDGE = 2;
+    const verdict = this.verdict;
+    verdict.fill(OUT, minY * w + minX, maxY * w + maxX + 1);
+    const flatKey = this.flatKey;
+    flatKey.fill(0, minY * w + minX, maxY * w + maxX + 1);
+    for (const l of layers) {
+      const fieldL = this.fields[l];
+      const bit = 1 << l;
+      for (let y = minY; y <= maxY; y++) {
+        const row = y * w;
+        for (let x = minX; x <= maxX; x++) {
+          const i = row + x;
+          const f = fieldL[i];
+          if (f <= 0) continue;
+          const gx = Math.abs((fieldL[i + 1] ?? f) - (fieldL[i - 1] ?? f)) / 2;
+          const gy = Math.abs((fieldL[i + w] ?? f) - (fieldL[i - w] ?? f)) / 2;
+          // Field change per output pixel, not per texel.
+          const per = Math.max((gx + gy) / pxPerTexel, 1e-6);
+          const dpx = (f - THRESHOLD) / per;
+          if (dpx < -slack) continue; // outside this layer entirely
+          if (dpx > borderPx + slack) {
+            if (verdict[i] === OUT) verdict[i] = FLAT;
+            flatKey[i] |= bit;
+          } else {
+            verdict[i] = EDGE;
+          }
+        }
       }
-      // ImageData is straight (not premultiplied) alpha.
-      const o = i * 4;
-      px[o] = a > 0 ? (r / a) * 255 : 0;
-      px[o + 1] = a > 0 ? (g / a) * 255 : 0;
-      px[o + 2] = a > 0 ? (bl / a) * 255 : 0;
-      px[o + 3] = a * 255;
+    }
+
+    // A flat texel's colour depends only on which layers cover it, so there are a
+    // handful of distinct answers. Resolve each texel's word once here rather than
+    // hashing the layer set again for every output pixel inside it.
+    const flatCache = new Map<number, number>();
+    const flatWord = this.flatWord;
+    for (let y = minY; y <= maxY; y++) {
+      const row = y * w;
+      for (let x = minX; x <= maxX; x++) {
+        const i = row + x;
+        if (verdict[i] !== FLAT) continue;
+        const key = flatKey[i];
+        let word = flatCache.get(key);
+        if (word === undefined) {
+          let r = 0, g = 0, b = 0, a = 0;
+          for (const l of layers) {
+            if (!(key & (1 << l))) continue;
+            const la = colors[l * 4 + 3];
+            r = colors[l * 4] * la + r * (1 - la);
+            g = colors[l * 4 + 1] * la + g * (1 - la);
+            b = colors[l * 4 + 2] * la + b * (1 - la);
+            a = la + a * (1 - la);
+          }
+          word = pack(r, g, b, a);
+          flatCache.set(key, word);
+        }
+        flatWord[i] = word;
+      }
+    }
+
+    // Pass 2, per output pixel: flat runs are a single store; only pixels whose
+    // texel holds an edge pay for a bilinear sample.
+    const colOfX = this.colOfX;
+    const y0 = Math.max(0, Math.floor((minY / scale) * dpr));
+    const y1 = Math.min(outH - 1, Math.ceil(((maxY + 1) / scale) * dpr));
+    const x0 = Math.max(0, Math.floor((minX / scale) * dpr));
+    const x1 = Math.min(outW - 1, Math.ceil(((maxX + 1) / scale) * dpr));
+    for (let oy = y0; oy <= y1; oy++) {
+      const fyf = ((oy + 0.5) / dpr) * scale - 0.5;
+      const fy = Math.min(h - 1, Math.max(0, Math.floor(fyf)));
+      const ty = Math.min(h - 2, Math.max(0, Math.floor(fyf)));
+      const wy = Math.min(1, Math.max(0, fyf - ty));
+      const vRow = fy * w;
+      const outRow = oy * outW;
+      for (let ox = x0; ox <= x1; ox++) {
+        const v = verdict[vRow + colOfX[ox]];
+        if (v === OUT) continue;
+        if (v === FLAT) {
+          out32[outRow + ox] = flatWord[vRow + colOfX[ox]];
+          continue;
+        }
+        // Edge texel: sample the field where this pixel actually sits.
+        const fxf = ((ox + 0.5) / dpr) * scale - 0.5;
+        const tx = Math.min(w - 2, Math.max(0, Math.floor(fxf)));
+        const wx = Math.min(1, Math.max(0, fxf - tx));
+        let r = 0, g = 0, b = 0, a = 0;
+        for (const l of layers) {
+          const fl = this.fields[l];
+          const i00 = ty * w + tx;
+          const f = (fl[i00] * (1 - wx) + fl[i00 + 1] * wx) * (1 - wy)
+            + (fl[i00 + w] * (1 - wx) + fl[i00 + w + 1] * wx) * wy;
+          if (f <= 0) continue;
+          const gx = Math.abs((fl[i00 + 1] ?? f) - (fl[i00 - 1] ?? f)) / 2;
+          const gy = Math.abs((fl[i00 + w] ?? f) - (fl[i00 - w] ?? f)) / 2;
+          const per = Math.max((gx + gy) / pxPerTexel, 1e-6);
+          const dpx = (f - THRESHOLD) / per;
+          const outer = clamp01(dpx / EDGE_AA_PX + 0.5);
+          if (outer <= 0) continue;
+          const inner = clamp01((dpx - borderPx) / EDGE_AA_PX + 0.5);
+          const aFill = inner * colors[l * 4 + 3];
+          const aBorder = (outer - inner) * BORDER_ALPHA;
+          const la = aFill + aBorder;
+          if (la <= 0) continue;
+          // Fill and border cover disjoint bands, so their contributions add.
+          const cr = colors[l * 4], cg = colors[l * 4 + 1], cb = colors[l * 4 + 2];
+          const pr = cr * aFill + cr * BORDER_DARKEN * aBorder;
+          const pg = cg * aFill + cg * BORDER_DARKEN * aBorder;
+          const pb = cb * aFill + cb * BORDER_DARKEN * aBorder;
+          r = pr + r * (1 - la);
+          g = pg + g * (1 - la);
+          b = pb + b * (1 - la);
+          a = la + a * (1 - la);
+        }
+        if (a > 0) out32[outRow + ox] = pack(r, g, b, a);
+      }
     }
     this.ctx.putImageData(this.image!, 0, 0);
   }
@@ -396,7 +545,7 @@ class GpuTerritory {
     }
     this.prog = prog;
     gl.useProgram(prog);
-    for (const name of ["uBalls", "uColors", "uCount", "uTime"]) {
+    for (const name of ["uBalls", "uColors", "uCount", "uTime", "uBorderPx"]) {
       this.loc[name] = gl.getUniformLocation(prog, name);
     }
     // Fullscreen triangle.
@@ -437,9 +586,27 @@ class GpuTerritory {
     gl.uniform4fv(this.loc.uColors, layerColors(world, layerOf));
     gl.uniform1i(this.loc.uCount, count);
     gl.uniform1f(this.loc.uTime, timeMs / 1000);
+    gl.uniform1f(this.loc.uBorderPx, BORDER_PX * scale);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
   }
+}
+
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/**
+ * Packs a premultiplied colour into one RGBA word. ImageData is straight alpha,
+ * so the colour is un-premultiplied on the way in; writing a whole pixel as a
+ * single 32-bit store is what makes the flat runs cheap.
+ */
+function pack(r: number, g: number, b: number, a: number): number {
+  const inv = a > 0 ? 1 / a : 0;
+  const R = Math.min(255, (r * inv * 255) | 0);
+  const G = Math.min(255, (g * inv * 255) | 0);
+  const B = Math.min(255, (b * inv * 255) | 0);
+  const A = Math.min(255, (a * 255) | 0);
+  // Little-endian byte order in the ImageData buffer: R, G, B, A.
+  return (A << 24) | (B << 16) | (G << 8) | R;
 }
 
 export function hexToRgb(hex: string): [number, number, number] {

@@ -73,7 +73,7 @@ Critically, the node you *start* the drag on doesn't have to be one you own — 
 
 ### 6.1 Ejecting — Growing a New Node
 
-Dragging from an existing node of yours out to empty space plants a new node there, seeded with a small starting nutrient buffer drawn from the parent, and **automatically grows a pipeline from the parent to the child** — no second drag needed. The parent therefore needs a free pipeline slot to eject. Because reach is checked before the buffer is paid, a child planted at maximum range is still connected even though paying for it shrinks the parent's reach. Ejection range is limited by the parent node's current resources (Section 5).
+Dragging from an existing node of yours out to empty space plants a new node there, seeded with **a share of the parent's store** (Galcon-style; default half, set with the wheel mid-drag between 15% and 90%), and **automatically grows a pipeline from the parent to the child** — no second drag needed. The parent therefore needs a free pipeline slot to eject. Because reach is checked before the buffer is paid, a child planted at maximum range is still connected even though paying for it shrinks the parent's reach. Ejection range is limited by the parent node's current resources (Section 5). Because the throw scales with the parent, a well-fed colony produces a child with real reach that can immediately throw again — expansion travels in chains rather than stalling on a weak stub every hop.
 
 ### 6.2 Pipelines — Persistent, Directional, One-Per-Pair
 

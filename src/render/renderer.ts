@@ -1,4 +1,4 @@
-import { NODE_CORE_RADIUS } from "../config";
+import { NODE_CORE_RADIUS, colonyAura } from "../config";
 import type { Input } from "../input/input";
 import type { Vec } from "../sim/geometry";
 import type { GameNode, Pipe } from "../sim/types";
@@ -312,7 +312,7 @@ export class Renderer {
       ? target.id === from.id
         ? null
         : world.canConnect(player, from.id, target.id)
-      : world.canEject(player, from.id, input.cursor);
+      : world.canEject(player, from.id, input.cursor, input.ejectFraction);
 
     if (from.owner === player) this.drawReachRing(world, from);
     if (!check) return;
@@ -328,9 +328,25 @@ export class Renderer {
     ctx.setLineDash([]);
 
     if (!target) {
+      // Ghost of the colony about to be thrown, sized by what it would carry,
+      // with the share the wheel is set to (§6.1).
+      const carried = world.ejectAmount(from, input.ejectFraction);
       ctx.beginPath();
       ctx.arc(end.x, end.y, NODE_CORE_RADIUS, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, colonyAura(carried), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (check.ok) {
+        const label = `${Math.round(input.ejectFraction * 100)}% · ${Math.round(carried)}`;
+        ctx.fillStyle = color;
+        ctx.font = `${14 / this.camera.zoom}px system-ui, sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(label, end.x + 12 / this.camera.zoom, end.y - 8 / this.camera.zoom);
+      }
     }
     if (!check.ok) this.drawReason(check.reason, end);
   }

@@ -9,7 +9,16 @@ export const DT = 1 / SIM_HZ; // seconds per sim step
 // §5 Node economy
 export const START_NUTRIENTS = 100;
 export const UPKEEP_PER_SEC = 1;
-export const EJECT_BUFFER = 30; // nutrients moved from parent into a newly ejected node
+/**
+ * Ejecting carries a share of the parent's store rather than a flat amount, so a
+ * rich colony throws a strong child that can immediately throw again — chained
+ * expansion across the map, instead of stalling on a 30-nutrient stub with no
+ * reach. Adjustable per throw with the wheel while dragging (§6.1).
+ */
+export const EJECT_FRACTION_DEFAULT = 0.5;
+export const EJECT_FRACTION_MIN = 0.15;
+export const EJECT_FRACTION_MAX = 0.9;
+export const EJECT_MIN_AMOUNT = 25; // a throw smaller than this isn't worth making
 export const EJECT_MIN_PARENT_REMAINING = 10; // parent must keep at least this after ejecting
 
 // §6.2 Pipelines

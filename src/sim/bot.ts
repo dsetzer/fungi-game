@@ -1,4 +1,4 @@
-import { EJECT_BUFFER } from "../config";
+import { NODE_SPACING } from "../config";
 import { dist } from "./geometry";
 import type { GameNode, PlayerId } from "./types";
 import type { World } from "./world";
@@ -39,7 +39,7 @@ export function runBot(world: World, player: PlayerId): void {
   if (!target) return;
 
   const d = dist(parent.x, parent.y, target.x, target.y);
-  const step = Math.min(world.reachOf(parent) * 0.85, d - world.radiusOf(target) - EJECT_BUFFER);
+  const step = Math.min(world.reachOf(parent) * 0.85, d - world.radiusOf(target) - NODE_SPACING);
   if (step <= world.radiusOf(parent) + 20) return;
   const p = {
     x: parent.x + ((target.x - parent.x) / d) * step,

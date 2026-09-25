@@ -1,6 +1,9 @@
 import {
   DT,
-  EJECT_BUFFER,
+  EJECT_FRACTION_DEFAULT,
+  EJECT_FRACTION_MAX,
+  EJECT_FRACTION_MIN,
+  EJECT_MIN_AMOUNT,
   EJECT_MIN_PARENT_REMAINING,
   FALL_DRAIN_GAIN,
   FALL_CLUSTER_BLOBS_MAX,
@@ -248,10 +251,20 @@ export class World {
 
   // ---------- rule checks (shared by command validation and input previews) ----------
 
-  canEject(player: PlayerId, fromId: EntityId, target: Vec): CheckResult {
+  /**
+   * How much a throw would carry: a share of the parent's store, clamped so the
+   * parent keeps something back and tiny throws aren't made at all.
+   */
+  ejectAmount(from: GameNode, fraction = EJECT_FRACTION_DEFAULT): number {
+    const share = Math.min(EJECT_FRACTION_MAX, Math.max(EJECT_FRACTION_MIN, fraction));
+    const spare = from.nutrients - EJECT_MIN_PARENT_REMAINING;
+    return Math.min(spare, Math.max(EJECT_MIN_AMOUNT, from.nutrients * share));
+  }
+
+  canEject(player: PlayerId, fromId: EntityId, target: Vec, fraction?: number): CheckResult {
     const from = this.nodes.get(fromId);
     if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
-    if (from.nutrients - EJECT_BUFFER < EJECT_MIN_PARENT_REMAINING) return NO("too weak to eject");
+    if (this.ejectAmount(from, fraction) < EJECT_MIN_AMOUNT) return NO("too weak to eject");
     // Ejecting auto-grows a hypha parent → child, so the parent needs a free output.
     if (this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
@@ -336,9 +349,11 @@ export class World {
   private apply(cmd: Command): void {
     switch (cmd.type) {
       case "eject": {
-        if (!this.canEject(cmd.player, cmd.from, cmd).ok) return;
-        this.nodes.get(cmd.from)!.nutrients -= EJECT_BUFFER;
-        const child = this.addColony(cmd.player, cmd.x, cmd.y, EJECT_BUFFER);
+        if (!this.canEject(cmd.player, cmd.from, cmd, cmd.fraction).ok) return;
+        const parent = this.nodes.get(cmd.from)!;
+        const carried = this.ejectAmount(parent, cmd.fraction);
+        parent.nutrients -= carried;
+        const child = this.addColony(cmd.player, cmd.x, cmd.y, carried);
         this.addPipe(cmd.from, child.id, cmd.player);
         return;
       }

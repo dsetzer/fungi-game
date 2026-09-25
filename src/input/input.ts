@@ -1,3 +1,8 @@
+import {
+  EJECT_FRACTION_DEFAULT,
+  EJECT_FRACTION_MAX,
+  EJECT_FRACTION_MIN,
+} from "../config";
 import type { Camera } from "../render/camera";
 import { distToSegmentSq, type Vec } from "../sim/geometry";
 import { distToPipeSq } from "../render/pipePath";
@@ -30,6 +35,8 @@ export class Input {
   cursor: Vec = { x: 0, y: 0 };
   hoverPipe: EntityId | null = null;
   hoverWall: EntityId | null = null;
+  /** Share of the parent carried by the next throw; the wheel adjusts it mid-drag. */
+  ejectFraction = EJECT_FRACTION_DEFAULT;
 
   private keys = new Set<string>();
   private right: RightPress | null = null;
@@ -163,7 +170,7 @@ export class Input {
       if (target && target.id !== from) {
         this.send({ type: "connect", player, from, to: target.id });
       } else if (!target) {
-        this.send({ type: "eject", player, from, ...this.cursor });
+        this.send({ type: "eject", player, from, ...this.cursor, fraction: this.ejectFraction });
       }
       this.drag = null;
       this.leftPress = null;
@@ -189,6 +196,17 @@ export class Input {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
+    // Mid-throw the wheel sets how much of the parent goes with the new colony
+    // (Galcon-style). It only does this while dragging, so zoom is never hijacked
+    // just because the cursor is near a colony.
+    if (this.drag) {
+      const step = e.deltaY < 0 ? 0.05 : -0.05;
+      this.ejectFraction = Math.min(
+        EJECT_FRACTION_MAX,
+        Math.max(EJECT_FRACTION_MIN, this.ejectFraction + step),
+      );
+      return;
+    }
     this.camera.zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015));
   };
 }

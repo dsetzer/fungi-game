@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  EJECT_BUFFER,
+  EJECT_FRACTION_DEFAULT,
+  EJECT_MIN_AMOUNT,
   FALL_DRAIN_GAIN,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
@@ -19,8 +20,8 @@ import { World } from "../src/sim/world";
 
 const openArena = (walls: Parameters<typeof emptyArena>[1] = []) => emptyArena(2000, walls);
 
-function soloWorld(walls: Parameters<typeof emptyArena>[1] = []) {
-  const world = new World(openArena(walls));
+function soloWorld(walls: Parameters<typeof emptyArena>[1] = [], radius = 2000) {
+  const world = new World(emptyArena(radius, walls));
   const me = world.addPlayer("me", false);
   return { world, me };
 }
@@ -151,8 +152,39 @@ describe("eject", () => {
     // Child is fed from the first step, so it's sustained and pays no upkeep.
     const pipeStep = PIPE_RATE_PER_SEC / SIM_HZ;
     const upkeepStep = UPKEEP_PER_SEC / SIM_HZ;
-    expect(child.nutrients).toBeCloseTo(EJECT_BUFFER + pipeStep);
-    expect(parent.nutrients).toBeCloseTo(200 - EJECT_BUFFER - pipeStep - upkeepStep);
+    const carried = 200 * EJECT_FRACTION_DEFAULT;
+    expect(child.nutrients).toBeCloseTo(carried + pipeStep);
+    expect(parent.nutrients).toBeCloseTo(200 - carried - pipeStep - upkeepStep);
+  });
+
+  it("carries a share of the parent, so a rich colony throws a strong child", () => {
+    const { world, me } = soloWorld();
+    const rich = world.addColony(me.id, 0, 0, 800);
+    const poor = world.addColony(me.id, 900, 0, 120);
+    world.enqueue({ type: "eject", player: me.id, from: rich.id, x: 300, y: 0 });
+    world.enqueue({ type: "eject", player: me.id, from: poor.id, x: 1200, y: 0 });
+    world.step();
+    const kids = [...world.nodes.values()].filter((n) => n !== rich && n !== poor);
+    const [richKid, poorKid] = kids.sort((a, b) => b.nutrients - a.nutrients);
+    expect(richKid.nutrients).toBeGreaterThan(poorKid.nutrients * 3);
+  });
+
+  it("lets a throw chain onward without stopping to refill", () => {
+    const { world, me } = soloWorld([], 9000);
+    let tip = world.addColony(me.id, 0, 0, 800);
+    const start = { x: tip.x, y: tip.y };
+    // Throw as far as reach allows, then immediately throw again from the new tip.
+    for (let hop = 0; hop < 4; hop++) {
+      const step = world.reachOf(tip) - 10;
+      const target = { x: tip.x + step, y: tip.y };
+      expect(world.canEject(me.id, tip.id, target).ok, `hop ${hop}`).toBe(true);
+      world.enqueue({ type: "eject", player: me.id, from: tip.id, ...target });
+      world.step();
+      tip = [...world.nodes.values()].reduce((far, n) => (n.x > far.x ? n : far), tip);
+    }
+    // Four hops without pausing should cover real ground.
+    expect(tip.x - start.x).toBeGreaterThan(1400);
+    expect(tip.nutrients).toBeGreaterThan(EJECT_MIN_AMOUNT);
   });
 
   it("still connects a child ejected at max reach, even though paying for it shrinks the parent's reach", () => {
@@ -169,10 +201,10 @@ describe("eject", () => {
 
   it("can't eject when the parent has no free output", () => {
     const { world, me } = soloWorld();
-    const parent = world.addColony(me.id, 0, 0, 500);
+    const parent = world.addColony(me.id, 0, 0, 5000);
     for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
       const a = (i / MAX_OUT_PIPES_PER_COLONY) * Math.PI * 2;
-      world.enqueue({ type: "eject", player: me.id, from: parent.id, x: Math.cos(a) * 100, y: Math.sin(a) * 100 });
+      world.enqueue({ type: "eject", player: me.id, from: parent.id, x: Math.cos(a) * 100, y: Math.sin(a) * 100, fraction: 0.15 });
     }
     world.step();
     expect(world.pipes.size).toBe(MAX_OUT_PIPES_PER_COLONY);

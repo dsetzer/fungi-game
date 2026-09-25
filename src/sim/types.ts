@@ -62,7 +62,8 @@ export interface Wall {
  * input; later they're what the client sends to an authoritative server.
  */
 export type Command =
-  | { type: "eject"; player: PlayerId; from: EntityId; x: number; y: number }
+  /** `fraction` is the share of the parent's store the throw carries (§6.1). */
+  | { type: "eject"; player: PlayerId; from: EntityId; x: number; y: number; fraction?: number }
   | { type: "connect"; player: PlayerId; from: EntityId; to: EntityId }
   | { type: "cut"; player: PlayerId; pipe: EntityId }
   | { type: "reverse"; player: PlayerId; pipe: EntityId }

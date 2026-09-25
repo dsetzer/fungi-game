@@ -1,4 +1,4 @@
-import { NODE_CORE_RADIUS, colonyAura } from "../config";
+import { EJECT_MIN_AMOUNT, NODE_CORE_RADIUS, colonyAura } from "../config";
 import type { Input } from "../input/input";
 import type { Vec } from "../sim/geometry";
 import type { GameNode, Pipe } from "../sim/types";
@@ -89,7 +89,7 @@ export class Renderer {
       this.drawReachRing(world, hovered);
     }
     for (const n of world.nodes.values()) {
-      if (shown(n.id)) this.drawNode(world, n, n === hovered);
+      if (shown(n.id)) this.drawNode(world, n, n === hovered, player);
     }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
@@ -270,13 +270,24 @@ export class Renderer {
   }
 
   /** A node is just a point: a fixed-size dot. Its size lives in the aura. */
-  private drawNode(world: World, n: GameNode, hovered: boolean): void {
+  private drawNode(world: World, n: GameNode, hovered: boolean, player: number): void {
     const { ctx } = this;
     const r = world.radiusOf(n);
-    ctx.fillStyle = n.kind === "fall" ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
+    const color = n.kind === "fall" ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
+    // Your own colonies draw hollow while they're too poor to throw, so a colony
+    // you can't expand from is obvious before you try to drag off it.
+    const tooWeak =
+      n.kind === "colony" && n.owner === player && world.ejectAmount(n) < EJECT_MIN_AMOUNT;
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-    ctx.fill();
+    if (tooWeak) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
     if (n.kind === "colony") this.drawDeathRing(n, r);
 
     if (hovered) {

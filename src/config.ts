@@ -95,17 +95,20 @@ export const NODE_SPACING = 22; // min clearance between a new node and existing
  * starting cluster — by then a colony covers most of a screen and a network's
  * colonies have merged into one mass, as in the original.
  *
- * 30 (fresh colony) → 89, 100 (spawn) → 171, 300 → 312, 1000 → 643,
- * 3000 (starting cluster eaten) → 1236, beyond that → capped.
+ * The offset matters as much as the scale: without it, a colony too weak to even
+ * throw still drew a substantial blob, so the map told you that you were strong
+ * when you were not. Size now collapses toward the dot as a colony empties.
  *
- * AURA_SCALE alone grows or shrinks all territory; the exponent sets how quickly
- * a rich colony outgrows a poor one.
+ * 12 (can barely throw) → 18, 30 → 45, 100 (spawn) → 114, 300 → 228,
+ * 1000 → 470, 2500 (cluster eaten) → 800, beyond that → capped.
  */
 export const AURA_SCALE = 11;
+export const AURA_OFFSET = 25;
 export const MAX_COLONY_AURA = 900;
 
 export function colonyAura(nutrients: number): number {
-  return Math.min(MAX_COLONY_AURA, 12 + Math.max(0, nutrients) ** 0.55 * AURA_SCALE);
+  const grown = Math.max(0, nutrients) ** 0.55 * AURA_SCALE - AURA_OFFSET;
+  return Math.min(MAX_COLONY_AURA, Math.max(NODE_CORE_RADIUS + 4, grown));
 }
 
 export function fallAura(nutrients: number): number {

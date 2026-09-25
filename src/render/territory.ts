@@ -86,6 +86,16 @@ export class TerritoryLayer {
   usingGpu = false;
 
   /**
+   * Why the GPU path isn't being used, or null when it is. The fallback used to
+   * be silent, and its only symptom is edges that soften as territory grows (it
+   * renders at reduced resolution and upscales) plus a much slower frame — both
+   * of which read as "the game got worse" rather than "the shader didn't load".
+   */
+  get fallbackReason(): string | null {
+    return this.usingGpu ? null : this.gpu.failure ?? "unknown";
+  }
+
+  /**
    * Renders the frame; returns the canvas to composite over the viewport.
    * `shown` filters out nodes hidden by fog of war.
    */
@@ -176,17 +186,39 @@ class CpuTerritory {
   private image: ImageData | null = null;
   /** Layers that had field data last frame — only these need clearing. */
   private lastLayers: number[] = [];
-  // Higher than it needs to be for the maths, but the result is upscaled to the
-  // screen, and at 0.3 the blob edges read as blurry rather than clean.
   /**
    * Fixed resolution steps, highest first: the buffer only resizes between these.
-   * The floor is deliberately high — dropping further did bound the cost, but the
-   * upscale made big territories visibly blurrier the larger they grew, which is
-   * the opposite of what growth should look like.
+   *
+   * This is why the fallback's edges soften. The contour is computed one *buffer*
+   * pixel wide, but the buffer is upscaled to the screen, so the edge lands 1/step
+   * screen pixels wide — measured at 3.5px with a small territory and 6.2px once
+   * one fills the view, against ~3.3px for a hard-edged canvas arc. Growing, or
+   * zooming out, made the picture worse, which is exactly backwards.
+   *
+   * 1.0 and 0.75 are here so anything short of a screen-filling territory draws at
+   * or near full resolution and is genuinely crisp; the pixel budget still pulls
+   * the step down for the big cases, where there is no way to be both fast and
+   * sharp on a CPU. The real fix for those is the WebGL2 path (see `failure`).
    */
-  private static readonly STEPS = [0.55, 0.42, 0.3];
-  /** Rough cap on field-evaluation pixels per frame, before scaling down. */
-  private static readonly PIXEL_BUDGET = 6e5;
+  private static readonly STEPS = [1, 0.75, 0.55, 0.42, 0.3];
+  /**
+   * Hard cap on field-evaluation pixels per frame. Because the step is chosen as
+   * sqrt(BUDGET / touched), the work saturates at exactly this many pixels however
+   * big the territory gets, so this number *is* the fallback's frame cost: measured
+   * at ~33ns a pixel, 6e5 cost 20ms a frame and 1.8e5 costs ~6ms.
+   *
+   * On a CPU you cannot have both crisp and fast here — 6e5 held a ~2px edge at
+   * every size but at 20ms. This is set to keep the worst case as cheap as it was
+   * before, which buys full resolution for small and medium territories and still
+   * softens the biggest ones.
+   */
+  private static readonly PIXEL_BUDGET = 1.8e5;
+  /**
+   * The step in use. Kept between frames so a territory sitting on a boundary
+   * doesn't oscillate between two resolutions every frame — resizing the buffer
+   * that way flickers badly.
+   */
+  private step = CpuTerritory.STEPS[0];
 
   render(world: World, camera: Camera, _timeMs: number, shown: (id: number) => boolean): void {
     const layerOf = layerAssigner(world);
@@ -194,13 +226,26 @@ class CpuTerritory {
     // bounded: zoomed out there are far more blobs on screen, and at a fixed
     // resolution this fallback spiked past 50ms a frame.
     const cssBalls = collectBalls(world, camera, 1, camera.width, camera.height, shown, layerOf);
+    // Cost is what actually gets written, so measure each ball's bounding box
+    // *clipped to the viewport* — the accumulation loop clips it too. Measuring the
+    // unclipped box made one blob larger than the screen look arbitrarily expensive,
+    // so zooming in far enough dropped the resolution for no reason at all.
     let touched = 0;
-    for (const b of cssBalls) touched += (2 * b.r * REACH) ** 2;
+    for (const b of cssBalls) {
+      const R = b.r * REACH;
+      const bw = Math.min(camera.width, b.x + R) - Math.max(0, b.x - R);
+      const bh = Math.min(camera.height, b.y + R) - Math.max(0, b.y - R);
+      if (bw > 0 && bh > 0) touched += bw * bh;
+    }
     // Snap to fixed steps. Recomputing a continuous scale every frame resized the
     // buffer constantly, which flickered — the resolution must only change when it
     // crosses a step, not with every wobble in how much blob is on screen.
     const wanted = Math.sqrt(CpuTerritory.PIXEL_BUDGET / Math.max(1, touched));
-    const scale = CpuTerritory.STEPS.find((s) => s <= wanted) ?? CpuTerritory.STEPS.at(-1)!;
+    // Hysteresis: drop a step as soon as needed, but only climb back once there is
+    // clear headroom, so a view sitting on a boundary settles instead of flickering.
+    const target = CpuTerritory.STEPS.find((s) => s <= wanted) ?? CpuTerritory.STEPS.at(-1)!;
+    if (target < this.step || wanted >= target * 1.15) this.step = target;
+    const scale = this.step;
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
     if (this.canvas.width !== w || this.canvas.height !== h || !this.image) {
@@ -300,6 +345,8 @@ class GpuTerritory {
   readonly canvas = document.createElement("canvas");
   private gl: WebGL2RenderingContext | null;
   private prog: WebGLProgram | null = null;
+  /** Set when WebGL2 or the shader is unusable, so the HUD can say why. */
+  failure: string | null = null;
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private balls = new Float32Array(MAX_BALLS * 4);
 
@@ -310,6 +357,7 @@ class GpuTerritory {
       antialias: false,
     });
     if (this.gl) this.init(this.gl);
+    else this.failure = "no WebGL2 context";
   }
 
   get available(): boolean {
@@ -322,7 +370,9 @@ class GpuTerritory {
       gl.shaderSource(s, src);
       gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-        console.warn("territory shader:", gl.getShaderInfoLog(s));
+        const log = (gl.getShaderInfoLog(s) ?? "").trim();
+        console.warn("territory shader:", log);
+        this.failure = `shader did not compile: ${log.slice(0, 120)}`;
         return null;
       }
       return s;
@@ -335,7 +385,13 @@ class GpuTerritory {
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      console.warn("territory program:", gl.getProgramInfoLog(prog));
+      const log = (gl.getProgramInfoLog(prog) ?? "").trim();
+      console.warn("territory program:", log);
+      // The usual cause is the uniform budget: uBalls is MAX_BALLS vec4s and the
+      // guaranteed minimum for MAX_FRAGMENT_UNIFORM_VECTORS is only 224, so a
+      // driver at spec minimum cannot link this program at all.
+      const budget = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS);
+      this.failure = `shader did not link (uniform budget ${budget}, needs ${MAX_BALLS + MAX_LAYERS}): ${log.slice(0, 90)}`;
       return;
     }
     this.prog = prog;

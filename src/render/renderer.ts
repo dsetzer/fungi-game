@@ -104,11 +104,16 @@ export class Renderer {
     p.fog = ema(p.fog, tEnd - tEntities);
     p.frame = ema(p.frame, tEnd - t0);
     p.gpuAuras = this.territory.usingGpu;
+    p.fallbackReason = this.territory.fallbackReason;
     if (this.showPerf) this.drawPerf();
   }
 
   /** Rolling per-stage render cost in ms — toggle the overlay with F. */
-  readonly perf = { vision: 0, auras: 0, terrain: 0, entities: 0, fog: 0, frame: 0, gpuAuras: false, walls: 0 };
+  readonly perf = {
+    vision: 0, auras: 0, terrain: 0, entities: 0, fog: 0, frame: 0, gpuAuras: false, walls: 0,
+    /** Why auras are on the CPU fallback, or null when the GPU path is running. */
+    fallbackReason: null as string | null,
+  };
   showPerf = false;
 
   private drawPerf(): void {
@@ -121,6 +126,7 @@ export class Renderer {
       `frame ${p.frame.toFixed(1)}ms`,
       `vision ${p.vision.toFixed(1)}`,
       `auras ${p.auras.toFixed(1)} ${p.gpuAuras ? "(gpu)" : "(cpu)"}`,
+      ...(p.fallbackReason ? [`  └ ${p.fallbackReason}`] : []),
       `terrain ${p.terrain.toFixed(1)} · ${p.walls} circles`,
       `entities ${p.entities.toFixed(1)}`,
       `fog ${p.fog.toFixed(1)}`,

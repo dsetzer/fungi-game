@@ -104,8 +104,14 @@ noted.
   isn't sending out more than it receives pays nothing, so relays don't wither.
 - **Gathering:** draining a fall costs it 3/s but gives the colony 6/s (`FALL_DRAIN_GAIN`);
   colony-to-colony transfers are 1:1, so loops can't generate nutrients.
+- **Attacking:** a hypha draining a *rival* pulls far harder than one moving nutrients inside a
+  network — `attackRate` = 4 + 0.5·√nutrients of the attacking colony, capped at 30/s. Since one
+  fall only feeds 6/s, a single attacker already out-paces a victim's income, and a few colonies
+  on one target kill it. Still 1:1: the speed is the weapon, not a multiplier.
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so
-  funnelling and reinforcing always work. Falls are uncapped.
+  funnelling and reinforcing always work. The cap counts only hyphae *you* grew, so a rival's
+  drain line doesn't spend one of your slots — and a colony that has spent all four is still
+  attackable. Falls are uncapped.
 - **Reversing:** only the player who grew a hypha can flip it — being drained is answered by
   cutting, not by commandeering the attacker's hypha.
 - **Cutting:** you can cut any hypha touching one of your nodes, including one draining you.

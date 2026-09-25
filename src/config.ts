@@ -28,8 +28,25 @@ export const PIPE_RATE_PER_SEC = 3; // nutrients per second drawn out of the sou
 // transfers stay 1:1 — doubling those would let a loop of colonies print nutrients.
 export const FALL_DRAIN_GAIN = 2;
 // Only outgoing hyphae are capped; a colony can take in any number (funnelling,
-// reinforcement). Falls are uncapped.
+// reinforcement). Falls are uncapped. The cap counts only hyphae the colony's
+// owner grew: a rival's drain line hangs off your colony without using up a slot,
+// so a developed hub can still be attacked (and can still expand while under attack).
 export const MAX_OUT_PIPES_PER_COLONY = 4;
+
+// Attacking. Draining a rival is how you eliminate them, so an attack line pulls
+// far harder than the flat rate at which nutrients move inside a network, and it
+// pulls harder the stronger the attacking colony is. Three colonies on one victim
+// must out-pace anything the victim can feed itself, or the drain does nothing but
+// slow their growth. What the attacker takes is what the victim loses, 1:1 — the
+// speed is the weapon, not a multiplier.
+export const ATTACK_RATE_BASE = 4;
+export const ATTACK_RATE_SCALE = 0.5;
+export const ATTACK_RATE_MAX = 30;
+/** Nutrients per second one attacking colony rips out of a rival. */
+export function attackRate(attackerNutrients: number): number {
+  const scaled = ATTACK_RATE_BASE + Math.sqrt(Math.max(0, attackerNutrients)) * ATTACK_RATE_SCALE;
+  return Math.min(ATTACK_RATE_MAX, scaled);
+}
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
 export const WALL_BAR_LENGTH = 170;

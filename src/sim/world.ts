@@ -15,6 +15,7 @@ import {
   MAX_OUT_PIPES_PER_COLONY,
   NEUTRAL_FALL_CLUSTERS,
   PIPE_RATE_PER_SEC,
+  attackRate,
   PLAYER_COUNT,
   SPAWN_CLUSTER_DISTANCE,
   START_NUTRIENTS,
@@ -198,6 +199,19 @@ export class World {
     return c;
   }
 
+  /**
+   * Outgoing hyphae the node's owner grew themselves — what the output cap counts.
+   * A rival's drain line is *their* hypha hanging off your colony: it must not eat
+   * one of your slots, and a colony with all its slots spent must not be immune to
+   * being attacked.
+   */
+  ownOutCount(nodeId: EntityId): number {
+    const owner = this.nodes.get(nodeId)?.owner;
+    let c = 0;
+    for (const p of this.pipes.values()) if (p.from === nodeId && p.owner === owner) c++;
+    return c;
+  }
+
   /** Hyphae flowing into this node. */
   inCount(nodeId: EntityId): number {
     let c = 0;
@@ -266,7 +280,7 @@ export class World {
     if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
     if (this.ejectAmount(from, fraction) < EJECT_MIN_AMOUNT) return NO("too weak to eject");
     // Ejecting auto-grows a hypha parent → child, so the parent needs a free output.
-    if (this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
+    if (this.ownOutCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
     if (!this.isFreeSpot(target, NODE_SPACING)) return NO("blocked");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
@@ -280,8 +294,11 @@ export class World {
     const mine = [from, to].filter((n) => n.owner === player);
     if (mine.length === 0) return NO("must involve one of your colonies");
     if (this.pipeBetween(fromId, toId)) return NO("already connected — click it to reverse");
-    if (from.kind === "colony" && this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) {
-      return NO("output limit reached");
+    // The cap is on what a colony sends of its own accord, so it only applies when
+    // the source is yours. Draining a rival never runs out of slots — otherwise a
+    // player who spent all four on their own network would be unattackable.
+    if (from.kind === "colony" && from.owner === player) {
+      if (this.ownOutCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
     }
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");
@@ -300,7 +317,7 @@ export class World {
     if (pipe.owner !== player) return NO("not your hypha");
     const newSource = this.nodes.get(pipe.to);
     if (!newSource) return NO("invalid target");
-    if (newSource.kind === "colony" && this.outCount(newSource.id) >= MAX_OUT_PIPES_PER_COLONY) {
+    if (newSource.kind === "colony" && this.ownOutCount(newSource.id) >= MAX_OUT_PIPES_PER_COLONY) {
       return NO("output limit reached");
     }
     return YES;
@@ -424,21 +441,33 @@ export class World {
     const delta = new Map<EntityId, number>();
     const add = (id: EntityId, v: number) => delta.set(id, (delta.get(id) ?? 0) + v);
 
-    // Outflow is computed from start-of-tick stores so pipe order doesn't matter.
-    // A node that can't cover all its outgoing pipes splits what it has evenly.
-    const outCount = new Map<EntityId, number>();
-    for (const p of this.pipes.values()) outCount.set(p.from, (outCount.get(p.from) ?? 0) + 1);
+    // Every hypha has its own rate. Moving nutrients inside a network, or tapping a
+    // fall, runs at the flat pipe rate; a hypha draining a *rival* runs at the
+    // attacking colony's attack rate, which is much faster and grows with the
+    // attacker's strength — that is what makes killing a player possible.
+    const rateOf = new Map<EntityId, number>();
+    const demandOf = new Map<EntityId, number>();
+    for (const p of this.pipes.values()) {
+      const src = this.nodes.get(p.from)!;
+      const dst = this.nodes.get(p.to)!;
+      const attack =
+        src.kind === "colony" && src.owner != null && dst.owner != null && dst.owner !== src.owner;
+      const r = (attack ? attackRate(dst.nutrients) : PIPE_RATE_PER_SEC) * DT;
+      rateOf.set(p.id, r);
+      demandOf.set(p.from, (demandOf.get(p.from) ?? 0) + r);
+    }
 
+    // Outflow is computed from start-of-tick stores so pipe order doesn't matter.
+    // A node that can't cover all its outgoing pipes splits what it has pro rata.
     const inflow = new Map<EntityId, number>();
     const drained = new Set<EntityId>(); // couldn't cover its outgoing demand this step
-    const perStep = PIPE_RATE_PER_SEC * DT;
-    const demand = (id: EntityId) => perStep * (outCount.get(id) ?? 0);
+    const demand = (id: EntityId) => demandOf.get(id) ?? 0;
     for (const p of this.pipes.values()) {
       const src = this.nodes.get(p.from)!;
       const wanted = demand(p.from);
       const share = Math.min(1, Math.max(0, src.nutrients) / wanted);
       if (share < 1) drained.add(p.from);
-      const amount = perStep * share;
+      const amount = rateOf.get(p.id)! * share;
       // Draining a fall yields more than it costs the fall (§6.4): gathering is
       // meant to be fast. Colony-to-colony transfers stay 1:1.
       const gained = src.kind === "fall" ? amount * FALL_DRAIN_GAIN : amount;

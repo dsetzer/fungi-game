@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ATTACK_RATE_BASE,
+  DT,
   EJECT_FRACTION_DEFAULT,
   EJECT_MIN_AMOUNT,
   FALL_DRAIN_GAIN,
@@ -11,6 +13,7 @@ import {
   START_NUTRIENTS,
   UPKEEP_PER_SEC,
   WALL_COST,
+  attackRate,
   reach,
 } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
@@ -520,5 +523,77 @@ describe("match", () => {
         expect(Math.max(...nearby.map((f) => f.nutrients))).toBeGreaterThan(bestInReach);
       }
     }
+  });
+});
+
+describe("draining a rival", () => {
+  /** Me, a rival, and whatever each of us is holding. */
+  function duel(mine: number, theirs: number) {
+    const world = new World(emptyArena(2000));
+    world.endOnLastStanding = false;
+    const me = world.addPlayer("me", false);
+    const foe = world.addPlayer("foe", true);
+    const attacker = world.addColony(me.id, 0, 0, mine);
+    const victim = world.addColony(foe.id, 200, 0, theirs);
+    return { world, me, foe, attacker, victim };
+  }
+
+  it("pulls at the attacker's attack rate, not the flat pipe rate", () => {
+    const { world, me, attacker, victim } = duel(100, 500);
+    const rate = attackRate(100);
+    expect(rate).toBeGreaterThan(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN); // worth doing at all
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
+    world.step(); // the command lands and one tick flows, both at the starting stores
+    // The victim pays upkeep too: nothing is feeding it. The attacker has inflow
+    // and sends nothing on, so it is sustained and pays none.
+    expect(victim.nutrients).toBeCloseTo(500 - (rate + UPKEEP_PER_SEC) * DT, 6);
+    expect(attacker.nutrients).toBeCloseTo(100 + rate * DT, 6);
+  });
+
+  it("takes exactly what the victim loses — attacking can't print nutrients", () => {
+    const { world, me, attacker, victim } = duel(100, 500);
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
+    world.step();
+    const before = attacker.nutrients + victim.nutrients;
+    runSeconds(world, 5);
+    // Only the victim pays upkeep; everything else just moves across.
+    expect(attacker.nutrients + victim.nutrients).toBeCloseTo(before - UPKEEP_PER_SEC * 5, 4);
+  });
+
+  it("out-paces a victim living off a fall, and kills it", () => {
+    const { world, me, attacker, victim } = duel(100, 400);
+    const fall = world.addFall(400, 0, 100_000);
+    world.enqueue({ type: "connect", player: 2, from: fall.id, to: victim.id });
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
+    world.step();
+    expect(attackRate(attacker.nutrients)).toBeGreaterThan(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN);
+    runSeconds(world, 120);
+    expect(world.nodes.has(victim.id)).toBe(false);
+  });
+
+  it("scales with the attacker: a bigger colony rips harder", () => {
+    expect(attackRate(900)).toBeGreaterThan(attackRate(100));
+    expect(attackRate(0)).toBeCloseTo(ATTACK_RATE_BASE);
+  });
+
+  it("can attack a colony that has spent all its own output slots", () => {
+    const { world, me, foe, attacker, victim } = duel(100, 600);
+    for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
+      const leaf = world.addColony(foe.id, 260 + i * 60, 200, 50);
+      world.enqueue({ type: "connect", player: foe.id, from: victim.id, to: leaf.id });
+    }
+    world.step();
+    expect(world.ownOutCount(victim.id)).toBe(MAX_OUT_PIPES_PER_COLONY);
+    expect(world.canConnect(me.id, victim.id, attacker.id).ok).toBe(true);
+  });
+
+  it("a rival's drain line doesn't consume the victim's own output budget", () => {
+    const { world, me, foe, attacker, victim } = duel(100, 600);
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
+    world.step();
+    expect(world.outCount(victim.id)).toBe(1);
+    expect(world.ownOutCount(victim.id)).toBe(0);
+    // Still free to grow its own network while under attack.
+    expect(world.canEject(foe.id, victim.id, { x: 200, y: -150 }).ok).toBe(true);
   });
 });

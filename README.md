@@ -102,8 +102,12 @@ noted.
   always keeps 5.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained — a colony with inflow that
   isn't sending out more than it receives pays nothing, so relays don't wither.
-- **Gathering:** draining a fall costs it 3/s but gives the colony 6/s (`FALL_DRAIN_GAIN`);
-  colony-to-colony transfers are 1:1, so loops can't generate nutrients.
+- **Gathering:** three out of a fall arrive as four in the colony (`FALL_YIELD_PER_SEC`). Feed a
+  fall while draining it and its pool stays flat while you net +1/s forever — one colony's upkeep.
+  That loop is the intended passive economy, and it's contestable: a rival's drain line pushes the
+  fall's outflow past what you feed it, and since falls never respawn, emptying one kills that
+  income for the rest of the round. Colony-to-colony transfers are 1:1, so a ring of colonies with
+  no fall in it generates nothing.
 - **Attacking:** a hypha draining a *rival* pulls far harder than one moving nutrients inside a
   network — `attackRate` = 4 + 0.5·√nutrients of the attacking colony, capped at 30/s. Since one
   fall only feeds 6/s, a single attacker already out-paces a victim's income, and a few colonies

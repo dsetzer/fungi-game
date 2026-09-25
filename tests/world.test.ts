@@ -5,6 +5,7 @@ import {
   EJECT_FRACTION_DEFAULT,
   EJECT_MIN_AMOUNT,
   FALL_DRAIN_GAIN,
+  FALL_YIELD_PER_SEC,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   NODE_SPACING,
@@ -595,5 +596,67 @@ describe("draining a rival", () => {
     expect(world.ownOutCount(victim.id)).toBe(0);
     // Still free to grow its own network while under attack.
     expect(world.canEject(foe.id, victim.id, { x: 200, y: -150 }).ok).toBe(true);
+  });
+});
+
+describe("sustaining a fall", () => {
+  /** A → fall → B → A: the feedback loop that turns a fall into passive income. */
+  function loop(pool: number) {
+    const world = new World(emptyArena(2000));
+    world.endOnLastStanding = false;
+    const me = world.addPlayer("me", false);
+    const foe = world.addPlayer("foe", true);
+    const a = world.addColony(me.id, 0, 0, 100);
+    const b = world.addColony(me.id, 0, 200, 100);
+    const fall = world.addFall(200, 100, pool);
+    world.enqueue({ type: "connect", player: me.id, from: a.id, to: fall.id });
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: b.id });
+    world.enqueue({ type: "connect", player: me.id, from: b.id, to: a.id });
+    world.step();
+    return { world, me, foe, a, b, fall };
+  }
+
+  const mine = (world: World, ...ids: number[]) =>
+    ids.reduce((t, id) => t + (world.nodes.get(id)?.nutrients ?? 0), 0);
+
+  it("holds the pool flat and pays the difference between what goes in and out", () => {
+    const { world, a, b, fall } = loop(200);
+    const before = mine(world, a.id, b.id);
+    runSeconds(world, 30);
+    expect(fall.nutrients).toBeCloseTo(200, 4); // neither depleting nor filling
+    // Three out, four in: the loop nets the difference, and nothing in the ring
+    // pays upkeep because every node's inflow covers what it sends on.
+    const net = FALL_YIELD_PER_SEC - PIPE_RATE_PER_SEC;
+    expect(mine(world, a.id, b.id) - before).toBeCloseTo(net * 30, 3);
+  });
+
+  it("is small enough that the loop only just covers a colony's upkeep", () => {
+    expect(FALL_YIELD_PER_SEC - PIPE_RATE_PER_SEC).toBe(UPKEEP_PER_SEC);
+  });
+
+  it("can be raided: a rival's drain line empties the fall for good", () => {
+    const { world, foe, fall } = loop(200);
+    const raider = world.addColony(foe.id, 400, 100, 100);
+    world.enqueue({ type: "connect", player: foe.id, from: fall.id, to: raider.id });
+    world.step();
+    // The fall now sends out more than I feed it, so it bleeds the difference.
+    runSeconds(world, 200);
+    expect(world.nodes.has(fall.id)).toBe(false);
+  });
+
+  it("does not let a ring of colonies alone print anything", () => {
+    const world = new World(emptyArena(2000));
+    world.endOnLastStanding = false;
+    const me = world.addPlayer("me", false);
+    const ring = [0, 1, 2].map((i) =>
+      world.addColony(me.id, Math.cos((i * Math.PI * 2) / 3) * 150, Math.sin((i * Math.PI * 2) / 3) * 150, 100),
+    );
+    ring.forEach((n, i) =>
+      world.enqueue({ type: "connect", player: me.id, from: n.id, to: ring[(i + 1) % 3].id }),
+    );
+    world.step();
+    const before = mine(world, ...ring.map((n) => n.id));
+    runSeconds(world, 60);
+    expect(mine(world, ...ring.map((n) => n.id))).toBeLessThanOrEqual(before + 1e-6);
   });
 });

@@ -23,10 +23,18 @@ export const EJECT_MIN_PARENT_REMAINING = 5; // parent must keep at least this a
 
 // §6.2 Pipelines
 export const PIPE_RATE_PER_SEC = 3; // nutrients per second drawn out of the source
-// Draining a nutrient fall yields more than it costs the fall: the fall loses
-// PIPE_RATE_PER_SEC, the colony gains this multiple of it. Colony-to-colony
-// transfers stay 1:1 — doubling those would let a loop of colonies print nutrients.
-export const FALL_DRAIN_GAIN = 2;
+// Draining a nutrient fall yields more than it costs the fall: three out of the
+// fall arrive as four in the colony. That ratio is deliberately small enough to
+// make the feedback loop the point rather than a runaway: feed a fall at the pipe
+// rate while draining it at the pipe rate and its pool stays flat while you net
+// +1/s — exactly one colony's upkeep. A cluster of falls wired that way is the
+// passive economy that funds expansion, and it is contestable: a rival can drain
+// your loop, or add their own drain line so the fall's outflow outruns what you
+// feed it and the pool empties for good.
+// Colony-to-colony transfers stay 1:1 — any gain there would let a ring of
+// colonies print nutrients with no fall involved at all.
+export const FALL_YIELD_PER_SEC = 4;
+export const FALL_DRAIN_GAIN = FALL_YIELD_PER_SEC / PIPE_RATE_PER_SEC;
 // Only outgoing hyphae are capped; a colony can take in any number (funnelling,
 // reinforcement). Falls are uncapped. The cap counts only hyphae the colony's
 // owner grew: a rival's drain line hangs off your colony without using up a slot,

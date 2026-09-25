@@ -97,12 +97,17 @@ There's no separate "drain" tool — draining is just a pipeline where you start
 Nutrient falls are resource patches scattered across the arena at the start of each round, functioning as neutral, unowned nodes with their own nutrient pool.
 
 - Draining one normally depletes its pool — once it hits zero, it disappears.
-- **Draining a fall yields more than it costs the fall** *(confirmed from the original's pacing)*: the fall loses the pipeline rate, the draining colony gains a multiple of it (prototype: 2x). Gathering is meant to be fast — movement and exploration depend on it. Colony-to-colony transfers stay 1:1; doubling those would let a loop of colonies generate nutrients from nothing.
-- **Sustaining a fall (advanced tactic):** if one of your nodes simultaneously runs an outgoing pipeline *into* a fall while another of your pipelines draws *out* of that same fall, the two flows can offset each other and keep the fall's pool topped up indefinitely instead of being consumed — turning a one-time resource into a permanent (if contested, and upkeep-taxed) throughput point in your network. This loop-sustaining trick is one of the more distinctive emergent strategies from the original game and should be preserved deliberately rather than "balanced away" — it rewards understanding the flow model rather than just clicking fast.
+- **Falls are placed once, at arena generation, and never respawn.** Every fall in a round is a finite, shrinking pool — the map gets poorer as the round goes on, which is what pushes players outward and eventually into each other. (Boosts, Section 6.7, are the opposite: they respawn.)
+- **Draining a fall yields more than it costs the fall** *(confirmed from the original's pacing)*: **three out of the fall arrive as four in the colony.** Colony-to-colony transfers stay 1:1; any gain there would let a ring of colonies generate nutrients with no fall involved at all.
+- **Sustaining a fall is the economy.** Run a pipeline *into* a fall from one of your nodes while another draws *out* of it, and the two flows offset: the pool stays flat instead of being consumed, and the 3-in/4-out ratio nets you the difference forever. That difference is **+1/s — exactly one colony's upkeep** — so a sustained fall pays for a colony, and a cluster of falls wired up this way is the passive income that funds expansion. Find more falls as you explore, loop them, expand further. This is deliberate, not an exploit to be balanced away: the ratio is set small precisely so the loop is worth building rather than a runaway.
+
+  The counterplay is what makes it fair, and there are two routes:
+  - **Steal the flow.** Drain the loop's colonies directly (Section 6.3) and take the nutrients back out of it.
+  - **Kill the source.** Attach your own drain line to the fall. Its total outflow now exceeds what its owner feeds in, so the pool bleeds the difference and eventually empties — and since falls never respawn, that disables the income permanently. Attacking the well beats attacking the bucket.
 
 > **Open item:** whether nutrient falls pay their own upkeep (Section 5) like player nodes do, or are exempt, is unconfirmed — this materially affects how valuable the sustaining trick above is and needs to be pinned down during prototyping.
 
-> **Prototype problem, unresolved:** the sustain trick currently *prints* nutrients rather than merely sustaining. A fall pays the 2x gain on the way out but takes only 1x on the way in, so feeding it at the pipeline rate while draining it at the pipeline rate leaves the pool flat and nets the player the difference — measured at +3/s from a 60-nutrient fall that never depletes, indefinitely. Sustaining should cost at least as much as it returns; the fix is presumably that the gain applies only to nutrients the fall actually had, not to nutrients passing through it. This needs settling before Section 6.7 is built, since powerups use the same loop.
+> **Resolved:** the ratio was 3-out/6-in during early prototyping, which made a sustain loop pay +3/s and dwarf every other source. It is now 3-out/4-in, the number the loop is designed around.
 
 ### 6.5 Walls — Defensive Structures
 
@@ -128,19 +133,21 @@ The combination of per-tick upkeep, resource-gated range, one-pipeline-per-pair,
 
 The game's objective loop is **explore, expand, feed, grow** — powerups are the layer that makes territory worth holding for reasons other than raw nutrient income.
 
-A powerup is a point scattered across the arena like a nutrient fall, with its own pool of nutrients, and it is used through exactly the same pipeline machinery — no new verbs, no menu. Two ways to use one:
+A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral grey node with its own nutrient pool, drawn like a nutrient fall, and it is captured and held through exactly the same pipeline machinery as everything else — no new verbs, no menu.
 
-- **Consume it.** Drain it like a fall and take the pool as nutrients, until it's depleted and gone. The immediate, greedy option.
-- **Sustain it.** Feed nutrients *into* it in a loop instead — one pipeline in, one out (Section 6.4's sustaining trick) — and the powerup's ability stays active for as long as you keep the circulation going. Pay upkeep to hold a boost rather than cashing the point in once.
+- **Capturing:** feed nutrients *into* it. It changes colour to yours and becomes an ordinary node of your network — yours in the same sense your colonies are, with the same upkeep, the same vulnerability to being drained, and the same rules about what it can connect to.
+- **Holding:** its ability is active while you hold it, paid for by keeping it fed. Because it is now a normal node, a rival takes it the same way they take anything else — drain it faster than its owner feeds it.
+- **Dying:** when its pool hits zero it is gone, exactly like any other node of yours that gets starved out.
+- **Respawning:** unlike falls (Section 6.4), boosts come back during a round. They are recurring contested objectives rather than a finite resource, which is what makes them worth fighting over repeatedly instead of once.
 
-That tension is the point: a contested powerup is worth fighting over precisely because holding one costs throughput every second, so a player sustaining several is spending real economy on it and is correspondingly vulnerable elsewhere.
+The economics follow from that: holding a boost costs throughput every second, so a player sitting on several is spending real economy and is correspondingly thin elsewhere.
 
-> **To pin down before building:**
+> **Still to pin down before building:**
 > - What the abilities actually *are* — this is the whole feature, and nothing is decided.
-> - Whether the boost applies to the colony wired into the powerup, or to the player's whole network.
-> - Whether a rival can take a sustained powerup from you: cut your feed line, drain the pool out from under you, or both.
-> - Whether consuming and sustaining are mutually exclusive, or whether a partly-drained powerup still works.
-> - Whether the ability is tied to the powerup's remaining pool (a stronger point gives a stronger boost) or is flat.
+> - Whether a boost's effect applies to the colony wired into it, or to the player's whole network.
+> - Whether the effect scales with the pool it is holding, or is flat.
+> - Respawn timing, and whether a boost returns to the same point on the map or a new one.
+> - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.
 
 ## 7. Win Condition & Match Flow
 
@@ -175,7 +182,7 @@ These are the gaps left after reconstructing the mechanics from memory — worth
 - Which mouse button performs the eject/pipeline drag, and what the other button is reserved for (Section 6).
 - Numeric tuning: starting nutrient pool, per-tick upkeep cost (confirmed to be 1, but is it always 1 regardless of node size?), ejected-node starting buffer, pipeline throughput rate, max pipelines per node, wall segment cost/length, the exact curve relating a node's resources to its ejection range / pipeline reach / physical radius.
 - Whether nutrient falls pay upkeep themselves (Section 6.4).
-- Everything under Section 6.7 — the powerup abilities themselves are entirely undecided.
+- What the boost abilities in Section 6.7 actually do — the capture, hold and respawn model is settled; the effects are not.
 - Player count per match and whether AI fills empty slots.
 - Any meta-progression between matches, or is each round fully self-contained.
 - Whether an established pipeline can be destroyed/severed directly (e.g., an enemy cutting through it, or a wall built after the fact retroactively cutting it), or only made moot by killing an endpoint.
@@ -193,4 +200,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Powerups and abilities (Section 6.7) — blocked on the sustain-loop economy in 6.4.
+9. Boosts as capture points (Section 6.7) — blocked only on deciding what the abilities do.

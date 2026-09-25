@@ -16,7 +16,9 @@ const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = cris
 
 // Each ball contributes (1 - (d/R)^2)^2 inside R = r * REACH. Threshold is chosen
 // so a lone ball's edge lands exactly at r; nearby balls sum and bridge the gap.
-const REACH = 1.7;
+// How far a blob's influence extends past its own radius. Higher bridges gaps
+// between neighbouring colonies more readily, so a network reads as one mass.
+const REACH = 1.9;
 const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
 
 const VERT = `#version 300 es
@@ -167,9 +169,21 @@ class CpuTerritory {
   // Higher than it needs to be for the maths, but the result is upscaled to the
   // screen, and at 0.3 the blob edges read as blurry rather than clean.
   private static readonly SCALE = 0.55;
+  /** Rough cap on field-evaluation pixels per frame, before scaling down. */
+  private static readonly PIXEL_BUDGET = 6e5;
 
   render(world: World, camera: Camera, _timeMs: number, shown: (id: number) => boolean): void {
-    const scale = CpuTerritory.SCALE;
+    const layerOf = layerAssigner(world);
+    // Collect in CSS pixels first, then pick a resolution that keeps the work
+    // bounded: zoomed out there are far more blobs on screen, and at a fixed
+    // resolution this fallback spiked past 50ms a frame.
+    const cssBalls = collectBalls(world, camera, 1, camera.width, camera.height, shown, layerOf);
+    let touched = 0;
+    for (const b of cssBalls) touched += (2 * b.r * REACH) ** 2;
+    const scale = Math.min(
+      CpuTerritory.SCALE,
+      Math.max(0.12, Math.sqrt(CpuTerritory.PIXEL_BUDGET / Math.max(1, touched))),
+    );
     const w = Math.max(1, Math.round(camera.width * scale));
     const h = Math.max(1, Math.round(camera.height * scale));
     if (this.canvas.width !== w || this.canvas.height !== h || !this.image) {
@@ -188,8 +202,8 @@ class CpuTerritory {
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
-    const layerOf = layerAssigner(world);
-    for (const b of collectBalls(world, camera, scale, w, h, shown, layerOf)) {
+    for (const css of cssBalls) {
+      const b = { ...css, x: css.x * scale, y: css.y * scale, r: css.r * scale };
       used.add(b.layer);
       const field = this.fields[b.layer];
       const maxR = b.r * REACH * 1.08; // wobble headroom

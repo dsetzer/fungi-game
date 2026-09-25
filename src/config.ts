@@ -50,8 +50,7 @@ export const VISION_REACH_SCALE = 1.15; // vision as a multiple of a colony's re
 export const VISION_MIN = 520;
 export const FOG_CELL = 240; // resolution of the explored-ground memory
 export const FOG_EXPLORED_ALPHA = 0.28; // how much fog remains over remembered ground
-// Fog edges are hard-edged circles, so it renders close to screen resolution;
-// slightly under 1 still saves fill cost without visibly softening the border.
+// Fog edges are hard-edged circles, so it renders at full resolution.
 export const FOG_RENDER_SCALE = 1;
 
 // Multiplayer rounds
@@ -73,16 +72,25 @@ export const ROUND_RESTART_DELAY_MS = 4000;
 export const NODE_CORE_RADIUS = 7;
 export const NODE_SPACING = 22; // min clearance between a new node and existing cores
 
-// Visual only: the fluid "aura" around each core grows with stored nutrients.
-// Auras of the same owner merge into one contiguous shape (metaballs).
-// Almost no fixed base, so a nearly-empty node visibly shrinks back toward its dot
-// (16 → ~16, fresh eject 30 → ~21, start 100 → ~36, 400 → ~69).
+/**
+ * Visual only: the fluid "aura" around each core grows with stored nutrients, and
+ * auras of one owner merge into a single contiguous mass (metaballs).
+ *
+ * Deliberately huge, and growing much faster than a square root, so territory
+ * spreads the way it did in the original: a colony that has eaten a fall cluster
+ * covers most of a screen, and a network's colonies merge into one mass long
+ * before they touch. Small nutrient counts still collapse back toward the dot.
+ *
+ * 16 → 136, fresh eject 30 → 194, start 100 → 419, 300 → 905, 1000+ → capped.
+ */
+export const MAX_COLONY_AURA = 1600;
+
 export function colonyAura(nutrients: number): number {
-  return 3 + Math.sqrt(Math.max(0, nutrients)) * 3.3;
+  return Math.min(MAX_COLONY_AURA, 40 + Math.max(0, nutrients) ** 0.75 * 12);
 }
 
 export function fallAura(nutrients: number): number {
-  return 2 + Math.sqrt(Math.max(0, nutrients)) * 1.9;
+  return Math.min(420, 3 + Math.sqrt(Math.max(0, nutrients)) * 2.5);
 }
 
 export function reach(nutrients: number): number {

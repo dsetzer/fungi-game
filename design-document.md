@@ -83,6 +83,7 @@ Dragging from one node to another grows a hypha/pipeline that continuously moves
 - **This means throughput scales with node count, not pipeline count on a single link.** To move nutrients faster between two areas, you build more nodes and more parallel pipelines between them — the network's total bandwidth is a function of how many distinct paths you've built, not how many times you've connected the same two points.
 - **Only outgoing pipelines are capped** (prototype: 4 per node); a node can accept any number of incoming pipelines, so funnelling and reinforcing a node under attack always work. Falls are uncapped. Drains out of a node use that node's outputs, so a node can be drained by at most that many pipelines at once — and an attacker who fills them also chokes the owner's ability to expand from it.
 - **Pipeline reach is resource-dependent**, same as ejection range (Section 5) — a richer node can reach further.
+- **Flow can be reversed in place:** left-clicking a hypha you grew flips which way nutrients move along it, keeping the same connection (the node that becomes the new source needs a free output). Rerouting a network is therefore a click rather than a cut-and-regrow, which matters when reach has since shrunk and the connection could not be rebuilt.
 - **Line-of-sight matters:** a pipeline can only form (and, presumably, only persists) along an unobstructed straight line between the two node centers — walls block it (Section 4).
 
 ### 6.3 Draining — Taking From Others

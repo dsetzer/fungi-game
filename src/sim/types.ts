@@ -65,6 +65,7 @@ export type Command =
   | { type: "eject"; player: PlayerId; from: EntityId; x: number; y: number }
   | { type: "connect"; player: PlayerId; from: EntityId; to: EntityId }
   | { type: "cut"; player: PlayerId; pipe: EntityId }
+  | { type: "reverse"; player: PlayerId; pipe: EntityId }
   | { type: "wall"; player: PlayerId; from: EntityId; x: number; y: number }
   | { type: "demolish"; player: PlayerId; wall: EntityId };
 

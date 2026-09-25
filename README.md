@@ -35,6 +35,7 @@ the server also hosts the client itself on port 8787.
 | Left-drag from a node → empty space | Eject a new colony, auto-connected by a hypha from its parent (§6.1) |
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (§6.2–6.3) |
 | Right-drag from your colony | Build a wall (⊢): crossbar at release point blocks line of sight (§6.5) |
+| Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
 | Right-click your wall / a hypha | Demolish it / cut it |
 | Right-drag empty space / WASD | Pan |
 | Mouse wheel | Zoom |
@@ -80,4 +81,5 @@ These are placeholders. Change them in `config.ts` / `world.ts`:
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so funnelling and reinforcement always work. Falls are uncapped.
 - **Reach when draining:** uses the reach of the endpoint(s) you own.
 - **Cutting:** you can cut any hypha touching one of your nodes, including one draining you.
+- **Reversing:** only the player who grew a hypha can flip it; being drained is answered by cutting, not by commandeering the attacker's hypha.
 - **Line of sight:** checked when a hypha is grown; a new crossbar cuts any hypha already crossing it.

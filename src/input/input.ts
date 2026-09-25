@@ -1,5 +1,6 @@
 import type { Camera } from "../render/camera";
 import { distToSegmentSq, type Vec } from "../sim/geometry";
+import { distToPipeSq } from "../render/pipePath";
 import type { Command, EntityId, GameNode, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 
@@ -32,6 +33,8 @@ export class Input {
 
   private keys = new Set<string>();
   private right: RightPress | null = null;
+  /** Where a left press started, to tell a click from a drag. */
+  private leftPress: { sx: number; sy: number } | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -64,6 +67,11 @@ export class Input {
     if (this.keys.has("d")) this.camera.x += step;
     this.hoverWall = this.wallAt(this.cursor);
     this.hoverPipe = this.hoverWall == null ? this.pipeAt(this.cursor) : null;
+    // Pointer cursor over anything a click acts on, so reversing is discoverable.
+    const clickable =
+      this.hoverWall != null ||
+      (this.hoverPipe != null && this.getWorld().canReverse(this.player(), this.hoverPipe).ok);
+    this.canvas.style.cursor = clickable ? "pointer" : "crosshair";
     // Drop gestures whose source died mid-drag.
     const world = this.getWorld();
     if (this.drag && !world.nodes.has(this.drag.from)) this.drag = null;
@@ -86,15 +94,23 @@ export class Input {
     return best;
   }
 
+  /** Nearest hypha under the cursor, measured against the curve as drawn. */
   private pipeAt(p: Vec): EntityId | null {
     const world = this.getWorld();
-    const tol = 8 / this.camera.zoom;
+    const tol = 12 / this.camera.zoom;
+    let best: EntityId | null = null;
+    let bestD = tol * tol;
     for (const pipe of world.pipes.values()) {
-      const a = world.nodes.get(pipe.from)!;
-      const b = world.nodes.get(pipe.to)!;
-      if (distToSegmentSq(p.x, p.y, a.x, a.y, b.x, b.y) < tol * tol) return pipe.id;
+      const a = world.nodes.get(pipe.from);
+      const b = world.nodes.get(pipe.to);
+      if (!a || !b) continue;
+      const d = distToPipeSq(p, a, b, pipe.id);
+      if (d < bestD) {
+        bestD = d;
+        best = pipe.id;
+      }
     }
-    return null;
+    return best;
   }
 
   /** Our own walls only — they're the only ones a right-click can remove. */
@@ -113,6 +129,7 @@ export class Input {
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);
     const node = this.nodeAt(this.cursor);
     if (e.button === 0) {
+      this.leftPress = { sx: e.offsetX, sy: e.offsetY };
       if (node) this.drag = { from: node.id };
     } else if (e.button === 2) {
       const wallFrom = node && node.owner === this.player() ? node.id : null;
@@ -149,6 +166,13 @@ export class Input {
         this.send({ type: "eject", player, from, ...this.cursor });
       }
       this.drag = null;
+      this.leftPress = null;
+    } else if (e.button === 0 && this.leftPress) {
+      // A left-click that isn't a drag: clicking a hypha flips which way it flows.
+      const moved = Math.hypot(e.offsetX - this.leftPress.sx, e.offsetY - this.leftPress.sy);
+      const pipe = moved <= CLICK_SLOP ? this.pipeAt(this.cursor) : null;
+      if (pipe != null) this.send({ type: "reverse", player, pipe });
+      this.leftPress = null;
     } else if (e.button === 2 && this.right) {
       const r = this.right;
       if (r.moved && r.wallFrom != null) {

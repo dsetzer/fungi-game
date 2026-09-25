@@ -5,6 +5,7 @@ import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
+import { pipeControlPoint, quadPoint } from "./pipePath";
 import { TerrainCache } from "./terrain";
 import { TerritoryLayer } from "./territory";
 
@@ -331,22 +332,4 @@ export class Renderer {
     }
     if (!check.ok) this.drawReason(check.reason, end);
   }
-}
-
-/** Deterministic sideways bend so hyphae look organic rather than ruled. */
-function pipeControlPoint(a: Vec, b: Vec, id: number): Vec {
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const bend = Math.sin(id * 12.9898) * 0.12;
-  return { x: mx - dy * bend, y: my + dx * bend };
-}
-
-function quadPoint(a: Vec, c: Vec, b: Vec, t: number): Vec {
-  const u = 1 - t;
-  return {
-    x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
-    y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
-  };
 }

@@ -266,13 +266,30 @@ export class World {
     if (!from || !to || from === to) return NO("invalid target");
     const mine = [from, to].filter((n) => n.owner === player);
     if (mine.length === 0) return NO("must involve one of your colonies");
-    if (this.pipeBetween(fromId, toId)) return NO("already connected");
+    if (this.pipeBetween(fromId, toId)) return NO("already connected — click it to reverse");
     if (from.kind === "colony" && this.outCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) {
       return NO("output limit reached");
     }
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");
     if (!this.hasLineOfSight(from, to)) return NO("no line of sight");
+    return YES;
+  }
+
+  /**
+   * Flipping which way a hypha flows (§6.2). Only the player who grew it may
+   * flip it — a rival draining you is answered by cutting, not by commandeering
+   * their hypha. The node that becomes the new source needs a free output.
+   */
+  canReverse(player: PlayerId, pipeId: EntityId): CheckResult {
+    const pipe = this.pipes.get(pipeId);
+    if (!pipe) return NO("no such hypha");
+    if (pipe.owner !== player) return NO("not your hypha");
+    const newSource = this.nodes.get(pipe.to);
+    if (!newSource) return NO("invalid target");
+    if (newSource.kind === "colony" && this.outCount(newSource.id) >= MAX_OUT_PIPES_PER_COLONY) {
+      return NO("output limit reached");
+    }
     return YES;
   }
 
@@ -333,6 +350,12 @@ export class World {
       }
       case "cut": {
         if (this.canCut(cmd.player, cmd.pipe).ok) this.pipes.delete(cmd.pipe);
+        return;
+      }
+      case "reverse": {
+        if (!this.canReverse(cmd.player, cmd.pipe).ok) return;
+        const pipe = this.pipes.get(cmd.pipe)!;
+        [pipe.from, pipe.to] = [pipe.to, pipe.from];
         return;
       }
       case "wall": {

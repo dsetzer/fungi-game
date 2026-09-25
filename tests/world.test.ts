@@ -234,6 +234,69 @@ describe("pipes", () => {
     expect(b.nutrients).toBeCloseTo(b0 + PIPE_RATE_PER_SEC);
   });
 
+  it("reverses a hypha in place, flipping which way nutrients move", () => {
+    const { world, me } = soloWorld();
+    const a = world.addColony(me.id, 0, 0, 200);
+    const b = world.addColony(me.id, 120, 0, 200);
+    world.enqueue({ type: "connect", player: me.id, from: a.id, to: b.id });
+    world.step();
+    const [pipe] = world.pipes.values();
+    runSeconds(world, 1);
+    expect(b.rate).toBeGreaterThan(0); // b is receiving
+
+    world.enqueue({ type: "reverse", player: me.id, pipe: pipe.id });
+    world.step();
+    runSeconds(world, 1);
+    expect(world.pipes.size).toBe(1);
+    expect([...world.pipes.values()][0].id).toBe(pipe.id); // same hypha, flipped
+    expect(pipe.from).toBe(b.id);
+    expect(pipe.to).toBe(a.id);
+    expect(a.rate).toBeGreaterThan(0); // now a receives
+    expect(b.rate).toBeLessThan(0);
+  });
+
+  it("only the player who grew a hypha may reverse it", () => {
+    const { world, me } = soloWorld();
+    const rival = world.addPlayer("rival", true);
+    const mine = world.addColony(me.id, 0, 0, 200);
+    const theirs = world.addColony(rival.id, 120, 0, 200);
+    // The rival drains me: their hypha, out of my colony.
+    world.enqueue({ type: "connect", player: rival.id, from: mine.id, to: theirs.id });
+    world.step();
+    const [pipe] = world.pipes.values();
+    expect(world.canReverse(me.id, pipe.id)).toEqual({ ok: false, reason: "not your hypha" });
+    // Cutting is the answer to being drained, and that I can do.
+    expect(world.canCut(me.id, pipe.id).ok).toBe(true);
+  });
+
+  it("refuses to reverse when the new source has no free output", () => {
+    const { world, me } = soloWorld();
+    const hub = world.addColony(me.id, 0, 0, 900);
+    const feeder = world.addColony(me.id, -150, 0, 900);
+    world.enqueue({ type: "connect", player: me.id, from: feeder.id, to: hub.id });
+    for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
+      // Offset the ring so no child lands on the feeder colony at (-150, 0).
+      const a = (i / MAX_OUT_PIPES_PER_COLONY) * Math.PI * 2 + 0.5;
+      world.enqueue({ type: "eject", player: me.id, from: hub.id, x: Math.cos(a) * 150, y: Math.sin(a) * 150 });
+    }
+    world.step();
+    const feed = [...world.pipes.values()].find((p) => p.from === feeder.id)!;
+    expect(world.outCount(hub.id)).toBe(MAX_OUT_PIPES_PER_COLONY);
+    expect(world.canReverse(me.id, feed.id)).toEqual({ ok: false, reason: "output limit reached" });
+  });
+
+  it("can reverse a hypha that is now longer than the colony's reach", () => {
+    const { world, me } = soloWorld();
+    const a = world.addColony(me.id, 0, 0, 900);
+    const b = world.addColony(me.id, world.reachOf(a) - 5, 0, 20);
+    world.enqueue({ type: "connect", player: me.id, from: a.id, to: b.id });
+    world.step();
+    const [pipe] = world.pipes.values();
+    a.nutrients = 30; // shrivelled: the hypha now out-reaches both ends
+    expect(world.canConnect(me.id, b.id, a.id).ok).toBe(false);
+    expect(world.canReverse(me.id, pipe.id).ok).toBe(true);
+  });
+
   it("allows only one pipe per pair, in either direction", () => {
     const { world, me } = soloWorld();
     const a = world.addColony(me.id, 0, 0, 100);

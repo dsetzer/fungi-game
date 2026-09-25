@@ -33,7 +33,7 @@ the server also hosts the client itself on port 8787.
 | Input | Action |
 |---|---|
 | Left-drag from a node → empty space | Eject a new colony, auto-connected by a hypha from its parent (§6.1) |
-| Wheel **while dragging** | Set the share of the parent the new colony carries (15–90%, default 50%) |
+| Wheel **while dragging** | Set the share of the parent the new colony carries (15–90%, default 65%; scroll up for long exploration runs) |
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (§6.2–6.3) |
 | Right-drag from your colony | Build a wall (⊢): crossbar at release point blocks line of sight (§6.5) |
 | Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
@@ -74,7 +74,7 @@ These are placeholders. Change them in `config.ts` / `world.ts`:
 
 - **Mouse buttons:** left-drag = eject/connect, right-drag from own colony = wall, right-click = cut/demolish, right-drag elsewhere = pan.
 - **Camera:** eases to the colony you start a drag from, offset toward where you are aiming, then follows a throw to where it lands. Any pan or zoom hands control straight back. Tunable in `config.ts`: `CAMERA_FLY_TAU_MS` (speed), `CAMERA_DRAG_LEAD` / `CAMERA_DRAG_LEAD_MAX` (offset), `CAMERA_FLY_ON_DRAG` / `CAMERA_FLY_ON_EJECT` (off switches).
-- **Ejecting:** carries a share of the parent (default 50%, wheel-adjustable 15–90%) rather than a flat amount, so a rich colony throws a child strong enough to throw again — chained exploration. Minimum throw 25; the parent always keeps 10.
+- **Ejecting:** carries a share of the parent (default 65%, wheel-adjustable 15–90%) rather than a flat amount, so a rich colony throws a child strong enough to throw again — chained exploration. Minimum throw 12; the parent always keeps 5 — low enough that a chain of throws keeps going instead of stalling on `too weak to eject`.
 - **Walls:** 15 nutrients each, max 3 per colony, fixed 170-unit crossbar (scaled with the bigger map); a new crossbar severs hyphae crossing it.
 - **Map:** radius 5400 (~15x the first prototype's area), cave terrain generated per round; reach = 220 + 20*sqrt(nutrients).
 - **Gathering:** draining a fall costs it 3/s but gives the colony 6/s (`FALL_DRAIN_GAIN`); colony-to-colony is 1:1.

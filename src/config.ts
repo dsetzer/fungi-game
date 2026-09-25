@@ -15,11 +15,11 @@ export const UPKEEP_PER_SEC = 1;
  * expansion across the map, instead of stalling on a 30-nutrient stub with no
  * reach. Adjustable per throw with the wheel while dragging (§6.1).
  */
-export const EJECT_FRACTION_DEFAULT = 0.5;
+export const EJECT_FRACTION_DEFAULT = 0.65;
 export const EJECT_FRACTION_MIN = 0.15;
 export const EJECT_FRACTION_MAX = 0.9;
-export const EJECT_MIN_AMOUNT = 25; // a throw smaller than this isn't worth making
-export const EJECT_MIN_PARENT_REMAINING = 10; // parent must keep at least this after ejecting
+export const EJECT_MIN_AMOUNT = 12; // a throw smaller than this isn't worth making
+export const EJECT_MIN_PARENT_REMAINING = 5; // parent must keep at least this after ejecting
 
 // §6.2 Pipelines
 export const PIPE_RATE_PER_SEC = 3; // nutrients per second drawn out of the source

@@ -19,10 +19,6 @@ const RES_SCALE = 1; // offscreen resolution relative to device pixels (1 = cris
 // How far a blob's influence extends past its own radius. Higher bridges gaps
 // between neighbouring colonies more readily, so a network reads as one mass.
 const REACH = 1.9;
-/** How much darker a territory's outline is than its fill. */
-export const OUTLINE_DARKEN = 0.55;
-/** Outline thickness in buffer pixels — constant whatever the blob's size. */
-export const OUTLINE_PX = 3;
 const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
 
 const VERT = `#version 300 es
@@ -66,29 +62,20 @@ void main() {
   for (int i = 1; i <= MAX_LAYERS; i++) {
     int l = i == MAX_LAYERS ? 0 : i;
     float f = field[l];
-    // Widths come from how fast the field changes per pixel, so the edge and the
-    // outline are a fixed number of pixels wide on a small fall and on a huge
-    // territory alike. Fixed field-space widths made big blobs look bevelled,
-    // because the same band spans far more screen on a shallow gradient.
+    // Flat fill with a crisp edge, no outline band. The edge width comes from how
+    // fast the field changes per pixel, so it stays a couple of pixels whatever
+    // the blob's size — a fixed field-space width made big blobs look bevelled.
     float fw = max(fwidth(f), 1e-5);
-    float shape = smoothstep(${THRESHOLD.toFixed(4)} - fw, ${THRESHOLD.toFixed(4)} + fw, f);
-    float a = shape * uColors[l].a;
-    float edge = 1.0 - smoothstep(
-      ${THRESHOLD.toFixed(4)} + fw,
-      ${THRESHOLD.toFixed(4)} + fw * ${(1 + OUTLINE_PX).toFixed(1)},
-      f
-    );
-    vec3 col = mix(uColors[l].rgb, uColors[l].rgb * ${OUTLINE_DARKEN.toFixed(2)}, edge);
-    a = max(a, shape * edge * uColors[l].a);
-    acc.rgb = col * a + acc.rgb * (1.0 - a);
+    float a = smoothstep(${THRESHOLD.toFixed(4)} - fw, ${THRESHOLD.toFixed(4)} + fw, f) * uColors[l].a;
+    acc.rgb = uColors[l].rgb * a + acc.rgb * (1.0 - a);
     acc.a = a + acc.a * (1.0 - a);
   }
   outColor = acc; // premultiplied
 }`;
 
-// Nutrient falls are warm and dark-rimmed: pale grey food on pale grey terrain
-// was unreadable.
-export const NEUTRAL_AURA = { rgb: [0.91, 0.74, 0.44], alpha: 0.9 };
+// Falls stay neutral grey like the rest of the art — just a clearly darker grey
+// than the terrain, which is all the separation they needed.
+export const NEUTRAL_AURA = { rgb: [0.62, 0.63, 0.67], alpha: 0.75 };
 export const PLAYER_AURA_ALPHA = 0.5;
 
 /** Picks the WebGL2 path when available, otherwise the CPU fallback. */
@@ -289,13 +276,10 @@ class CpuTerritory {
         const hi = THRESHOLD + fw;
         if (f <= lo) continue;
         const s = f >= hi ? 1 : ((f - lo) / (hi - lo)) ** 2 * (3 - 2 * ((f - lo) / (hi - lo)));
-        const t = Math.min(1, Math.max(0, (f - hi) / (fw * OUTLINE_PX)));
-        const edge = 1 - t * t * (3 - 2 * t);
-        const la = Math.max(s * colors[l * 4 + 3], s * edge * colors[l * 4 + 3]);
-        const dim = 1 - (1 - OUTLINE_DARKEN) * edge;
-        const cr = colors[l * 4] * dim;
-        const cg = colors[l * 4 + 1] * dim;
-        const cb = colors[l * 4 + 2] * dim;
+        const la = s * colors[l * 4 + 3];
+        const cr = colors[l * 4];
+        const cg = colors[l * 4 + 1];
+        const cb = colors[l * 4 + 2];
         r = cr * la + r * (1 - la);
         g = cg * la + g * (1 - la);
         bl = cb * la + bl * (1 - la);

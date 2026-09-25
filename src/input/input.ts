@@ -1,4 +1,8 @@
 import {
+  CAMERA_DRAG_LEAD,
+  CAMERA_DRAG_LEAD_MAX,
+  CAMERA_FLY_ON_DRAG,
+  CAMERA_FLY_ON_EJECT,
   EJECT_FRACTION_DEFAULT,
   EJECT_FRACTION_MAX,
   EJECT_FRACTION_MIN,
@@ -68,6 +72,8 @@ export class Input {
 
   update(dtMs: number): void {
     const step = (PAN_SPEED * dtMs) / 1000 / this.camera.zoom;
+    const panning = ["w", "a", "s", "d"].some((k) => this.keys.has(k));
+    if (panning) this.camera.cancelFly(); // keys take the camera back off autopilot
     if (this.keys.has("w")) this.camera.y -= step;
     if (this.keys.has("s")) this.camera.y += step;
     if (this.keys.has("a")) this.camera.x -= step;
@@ -137,7 +143,11 @@ export class Input {
     const node = this.nodeAt(this.cursor);
     if (e.button === 0) {
       this.leftPress = { sx: e.offsetX, sy: e.offsetY };
-      if (node) this.drag = { from: node.id };
+      if (node) {
+        this.drag = { from: node.id };
+        // Frame the colony being thrown from, so the throw is always on screen.
+        if (CAMERA_FLY_ON_DRAG && node.owner === this.player()) this.camera.flyTo(node.x, node.y);
+      }
     } else if (e.button === 2) {
       const wallFrom = node && node.owner === this.player() ? node.id : null;
       this.right = { sx: e.offsetX, sy: e.offsetY, moved: false, wallFrom };
@@ -146,6 +156,7 @@ export class Input {
 
   private onMove = (e: PointerEvent) => {
     const r = this.right;
+    if (r?.moved && r.wallFrom == null) this.camera.cancelFly(); // dragging the map
     if (r) {
       const dx = e.offsetX - r.sx;
       const dy = e.offsetY - r.sy;
@@ -158,7 +169,27 @@ export class Input {
       }
     }
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);
+    this.leadCameraTowardAim();
   };
+
+  /**
+   * While aiming a throw, sit on the parent but slide part-way toward the cursor,
+   * so both the colony and where it is going stay in frame.
+   */
+  private leadCameraTowardAim(): void {
+    if (!CAMERA_FLY_ON_DRAG || !this.drag) return;
+    const from = this.getWorld().nodes.get(this.drag.from);
+    if (!from || from.owner !== this.player()) return;
+    const dx = this.cursor.x - from.x;
+    const dy = this.cursor.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) {
+      this.camera.flyTo(from.x, from.y);
+      return;
+    }
+    const lead = Math.min(len * CAMERA_DRAG_LEAD, CAMERA_DRAG_LEAD_MAX);
+    this.camera.flyTo(from.x + (dx / len) * lead, from.y + (dy / len) * lead);
+  }
 
   private onUp = (e: PointerEvent) => {
     const player = this.player();
@@ -171,6 +202,8 @@ export class Input {
         this.send({ type: "connect", player, from, to: target.id });
       } else if (!target) {
         this.send({ type: "eject", player, from, ...this.cursor, fraction: this.ejectFraction });
+        // Follow the throw to where it lands.
+        if (CAMERA_FLY_ON_EJECT) this.camera.flyTo(this.cursor.x, this.cursor.y);
       }
       this.drag = null;
       this.leftPress = null;
@@ -196,6 +229,7 @@ export class Input {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
+    if (!this.drag) this.camera.cancelFly(); // zooming is manual control too
     // Mid-throw the wheel sets how much of the parent goes with the new colony
     // (Galcon-style). It only does this while dragging, so zoom is never hijacked
     // just because the cursor is near a colony.

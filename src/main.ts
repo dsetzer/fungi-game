@@ -99,8 +99,8 @@ function centreOnHome(): void {
   if (centredOn === world.arena) return;
   const home = [...world.nodes.values()].find((n) => n.owner === currentPlayer());
   if (!home) return;
-  camera.x = home.x;
-  camera.y = home.y;
+  // A new round is a new map: jump rather than fly across the whole arena.
+  camera.snapTo(home.x, home.y);
   centredOn = world.arena;
 }
 
@@ -167,6 +167,7 @@ function frame(now: number): void {
   try {
     centreOnHome();
     input.update(dt);
+    camera.update(dt);
     renderer.draw(currentWorld(), input, now, currentPlayer());
     // The HUD rebuilds its DOM, so it runs a few times a second, not every frame.
     if (now - lastHud > 200) {

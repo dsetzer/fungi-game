@@ -38,7 +38,7 @@ the server also hosts the client itself on port 8787.
 | Right-drag from your colony | Build a wall (⊢): crossbar at release point blocks line of sight (§6.5) |
 | Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
 | Right-click your wall / a hypha | Demolish it / cut it |
-| Right-drag empty space / WASD | Pan |
+| Right-drag empty space / WASD | Pan (takes the camera off autopilot) |
 | Mouse wheel | Zoom |
 | R | New round (solo only) |
 | F | Toggle the render profiler (per-stage ms, and whether auras run on GPU or CPU) |
@@ -73,6 +73,7 @@ All player actions are `Command`s queued into the `World` and applied at the sta
 These are placeholders. Change them in `config.ts` / `world.ts`:
 
 - **Mouse buttons:** left-drag = eject/connect, right-drag from own colony = wall, right-click = cut/demolish, right-drag elsewhere = pan.
+- **Camera:** eases to the colony you start a drag from, offset toward where you are aiming, then follows a throw to where it lands. Any pan or zoom hands control straight back. Tunable in `config.ts`: `CAMERA_FLY_TAU_MS` (speed), `CAMERA_DRAG_LEAD` / `CAMERA_DRAG_LEAD_MAX` (offset), `CAMERA_FLY_ON_DRAG` / `CAMERA_FLY_ON_EJECT` (off switches).
 - **Ejecting:** carries a share of the parent (default 50%, wheel-adjustable 15–90%) rather than a flat amount, so a rich colony throws a child strong enough to throw again — chained exploration. Minimum throw 25; the parent always keeps 10.
 - **Walls:** 15 nutrients each, max 3 per colony, fixed 170-unit crossbar (scaled with the bigger map); a new crossbar severs hyphae crossing it.
 - **Map:** radius 5400 (~15x the first prototype's area), cave terrain generated per round; reach = 220 + 20*sqrt(nutrients).

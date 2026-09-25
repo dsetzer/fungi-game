@@ -72,6 +72,18 @@ export function radiusForPlayers(players: number): number {
   return Math.round(Math.min(12000, Math.max(2800, ARENA_RADIUS * Math.sqrt(Math.max(1, players) / 4))));
 }
 
+// Camera
+/** Time constant of the eased fly-to: lower is snappier. */
+export const CAMERA_FLY_TAU_MS = 160;
+/** Fly to the colony you start a drag from, so the throw is framed. */
+export const CAMERA_FLY_ON_DRAG = true;
+/** How far the camera leads toward the drag, as a share of the drag length... */
+export const CAMERA_DRAG_LEAD = 0.45;
+/** ...capped here in world units, so a long aim doesn't fling the view. */
+export const CAMERA_DRAG_LEAD_MAX = 420;
+/** Follow a newly thrown colony to where it lands. */
+export const CAMERA_FLY_ON_EJECT = true;
+
 // Match (solo/offline mode)
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
 export const BOT_THINK_SECONDS = 1;

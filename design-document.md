@@ -142,12 +142,28 @@ A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral
 
 The economics follow from that: holding a boost costs throughput every second, so a player sitting on several is spending real economy and is correspondingly thin elsewhere.
 
-> **Still to pin down before building:**
-> - What the abilities actually *are* — this is the whole feature, and nothing is decided.
-> - Whether a boost's effect applies to the colony wired into it, or to the player's whole network.
-> - Whether the effect scales with the pool it is holding, or is flat.
-> - Respawn timing, and whether a boost returns to the same point on the map or a new one.
+**Abilities are activated, not passive.** Holding a boost does not give a standing bonus. Each one appears on the player's screen as an ability that is *clicked, or fired with a number hotkey*, runs for a duration, and then sits on a cooldown before it can be used again. It stays reusable for as long as the player holds the boost and keeps it sustained — and boost nodes carry an upkeep cost to maintain, so holding one is a continuing expense whether or not the ability is being fired.
+
+That is the shape of the whole feature: a boost is a contested point you pay to keep, that gives you a button rather than a buff.
+
+### The base list
+
+| Ability | Effect while active |
+|---|---|
+| **Long Reach** | Raises the length limit on creating hyphae. |
+| **Rapid Flow** | Raises the rate — or the amount — of nutrients a hypha can carry. |
+| **Vision** | Extends the view radius significantly. |
+| **Scissors** | Lets the player cut hyphae. Ordinarily only the player who grew a hypha may cut it (Section 6.2); Scissors cuts one connected to their own colonies even when they don't own it, and in fact cuts *any* hypha on the map, owned by anyone, attached to anyone. It carries a decent cooldown to pay for that. |
+
+Scissors is the one that changes an existing rule rather than scaling a number: it is the answer to being drained by someone out of reach, which the ownership rule otherwise leaves a player no response to.
+
+> **Numbers still to choose:** each ability's duration, cooldown and magnitude; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
+
+> **Still to pin down:**
+> - Whether an ability affects the colony wired into the boost or the player's whole network. (Vision and Rapid Flow read as network-wide; Long Reach could be either.)
+> - Whether holding several boosts gives several buttons at once, and whether two of the same stack.
 > - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.
+> - What happens to a running ability the moment its boost is taken or starved — does it cut out immediately, or finish its duration.
 
 ## 7. Win Condition & Match Flow
 
@@ -182,7 +198,7 @@ These are the gaps left after reconstructing the mechanics from memory — worth
 - Which mouse button performs the eject/pipeline drag, and what the other button is reserved for (Section 6).
 - Numeric tuning: starting nutrient pool, per-tick upkeep cost (confirmed to be 1, but is it always 1 regardless of node size?), ejected-node starting buffer, pipeline throughput rate, max pipelines per node, wall segment cost/length, the exact curve relating a node's resources to its ejection range / pipeline reach / physical radius.
 - Whether nutrient falls pay upkeep themselves (Section 6.4).
-- What the boost abilities in Section 6.7 actually do — the capture, hold and respawn model is settled; the effects are not.
+- Section 6.7's remaining numbers: ability durations, cooldowns and magnitudes, boost upkeep, and boost count per map.
 - Player count per match and whether AI fills empty slots.
 - Any meta-progression between matches, or is each round fully self-contained.
 - Whether an established pipeline can be destroyed/severed directly (e.g., an enemy cutting through it, or a wall built after the fact retroactively cutting it), or only made moot by killing an endpoint.
@@ -200,4 +216,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Boosts as capture points (Section 6.7) — blocked only on deciding what the abilities do.
+9. Boosts as capture points (Section 6.7) — four abilities specified; numbers and UI still to build.

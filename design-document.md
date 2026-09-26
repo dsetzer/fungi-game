@@ -142,28 +142,32 @@ A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral
 
 The economics follow from that: holding a boost costs throughput every second, so a player sitting on several is spending real economy and is correspondingly thin elsewhere.
 
-**Abilities are activated, not passive.** Holding a boost does not give a standing bonus. Each one appears on the player's screen as an ability that is *clicked, or fired with a number hotkey*, runs for a duration, and then sits on a cooldown before it can be used again. It stays reusable for as long as the player holds the boost and keeps it sustained — and boost nodes carry an upkeep cost to maintain, so holding one is a continuing expense whether or not the ability is being fired.
+**Abilities are activated, not passive, and they are spent one use at a time.** Holding a boost gives no standing bonus. Each one appears on the player's screen as an ability that is *clicked, or fired with a number hotkey*; firing it arms a single action, and once that action is taken the ability goes on cooldown. It stays reusable for as long as the player holds the boost and keeps it sustained — and boost nodes carry an upkeep cost, so holding one is a continuing expense whether or not it is ever fired.
+
+One use per activation rather than a timed window is what keeps them tactical: the player chooses the *moment* and the *target*, and a wasted activation costs them the cooldown. It also means an ability is a decision, not a period during which everything is simply better.
 
 That is the shape of the whole feature: a boost is a contested point you pay to keep, that gives you a button rather than a buff.
 
 ### The base list
 
-| Ability | Effect while active |
-|---|---|
-| **Long Reach** | Raises the length limit on creating hyphae. |
-| **Rapid Flow** | Raises the rate — or the amount — of nutrients a hypha can carry. |
-| **Vision** | Extends the view radius significantly. |
-| **Scissors** | Lets the player cut hyphae. Ordinarily only the player who grew a hypha may cut it (Section 6.2); Scissors cuts one connected to their own colonies even when they don't own it, and in fact cuts *any* hypha on the map, owned by anyone, attached to anyone. It carries a decent cooldown to pay for that. |
+| Ability | One activation buys | Notes |
+|---|---|---|
+| **Long Reach** | The next hypha you create may be made at long range. | The range bonus is **large** — in the original it typically put a quarter of the map within reach, spanning obstacles. At the current arena that is roughly 2,700 units against a mid-sized colony's ~800, so it is a relocation tool, not a small extension. |
+| **Rapid Flow** | Click a hypha to upgrade it, raising the rate or amount it carries. | Targeted at one hypha rather than the whole network. |
+| **Vision** | Extends the view radius significantly. | The one ability that does not obviously reduce to a single targeted action. |
+| **Scissors** | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Scissors cuts one attached to their own colonies even when they don't own it — and in fact cuts *any* hypha on the map, owned by anyone, attached to anyone. The cooldown is what pays for that. |
 
 Scissors is the one that changes an existing rule rather than scaling a number: it is the answer to being drained by someone out of reach, which the ownership rule otherwise leaves a player no response to.
 
-> **Numbers still to choose:** each ability's duration, cooldown and magnitude; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
+> **Numbers still to choose:** each ability's cooldown and magnitude; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
 
 > **Still to pin down:**
-> - Whether an ability affects the colony wired into the boost or the player's whole network. (Vision and Rapid Flow read as network-wide; Long Reach could be either.)
+> - **Does Long Reach ignore line of sight, or only distance?** "Over obstacles and everything" suggests the long connection is not blocked by terrain or crossbars at all. That is a much stronger ability than extra range — it would make walls and chokepoints temporarily irrelevant — and it changes the implementation rather than a constant.
+> - **Is a Rapid Flow upgrade permanent or does it wear off?** Permanent means a player accumulates upgraded trunk lines over a round and the ability is an investment; temporary makes it a burst for a fight. Undecided.
+> - **What shape is Vision?** Every other ability resolves to one targeted click. Vision could be a one-shot reveal of a chosen area, or the one ability that keeps a duration.
 > - Whether holding several boosts gives several buttons at once, and whether two of the same stack.
 > - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.
-> - What happens to a running ability the moment its boost is taken or starved — does it cut out immediately, or finish its duration.
+> - Whether an armed-but-unused ability can be cancelled, and whether losing the boost while armed cancels it.
 
 ## 7. Win Condition & Match Flow
 

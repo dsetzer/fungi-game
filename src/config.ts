@@ -60,7 +60,11 @@ export function attackRate(attackerNutrients: number): number {
 export const WALL_BAR_LENGTH = 170;
 export const WALL_COST = 15; // one-off, paid by the anchor colony
 export const MAX_WALLS_PER_COLONY = 3;
-export const WALLS_CUT_EXISTING_PIPES = true; // a new crossbar severs hyphae crossing it
+// A new crossbar does NOT sever hyphae already crossing it: walling over your own
+// established lines while denying the ground to anyone else is the point of placing
+// one well. A wall blocks line of sight, so it stops *new* connections and ejections
+// across it, and that is all it does.
+export const WALLS_CUT_EXISTING_PIPES = false;
 
 // §6.4 Nutrient falls — spawned as clusters of blobs, biggest in the middle
 export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one cluster per spawn

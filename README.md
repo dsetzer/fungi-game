@@ -124,8 +124,10 @@ noted.
 - **Territory:** a colony's blob is that player's ground. Rivals can't plant inside it, only around
   its edge, so reaching a node buried in a big network takes enough reach to span the blob. Neutral
   falls hold no territory.
-- **Walls:** 15 nutrients, max 3 per colony, fixed 170-unit crossbar; a new crossbar severs hyphae
-  already crossing it.
+- **Walls:** 15 nutrients, max 3 per colony, fixed 170-unit crossbar. A new crossbar does *not*
+  sever hyphae already crossing it — walling over your own established lines while denying the
+  ground to everyone else is the point of placing one well. It blocks line of sight, so it stops
+  new connections and ejections across it, and that is all it does.
 - **Line of sight:** checked when a hypha is grown, and blocked by terrain and crossbars alike.
 - **Fog of war:** colonies see 1.15× their reach (minimum 520). Explored ground stays remembered:
   terrain and falls persist, rivals only show while in sight.

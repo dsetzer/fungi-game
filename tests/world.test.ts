@@ -401,6 +401,27 @@ describe("pipes", () => {
 });
 
 describe("walls", () => {
+  it("leaves hyphae already crossing it alone, but blocks new ones", () => {
+    const { world, me } = soloWorld([], 4000);
+    const a = world.addColony(me.id, -200, 0, 900);
+    const b = world.addColony(me.id, 200, 0, 900);
+    world.enqueue({ type: "connect", player: me.id, from: a.id, to: b.id });
+    world.step();
+    expect(world.pipes.size).toBe(1);
+
+    // The crossbar is perpendicular to its stem, so to block the a-b line the stem
+    // has to run *along* it: anchor out to one side and wall at the midpoint.
+    const anchorNode = world.addColony(me.id, -600, 0, 900);
+    world.enqueue({ type: "wall", player: me.id, from: anchorNode.id, x: 0, y: 0 });
+    world.step();
+    expect(world.barriers.size).toBe(1);
+    // The established hypha survives - walling over your own lines is the tactic.
+    expect(world.pipes.size).toBe(1);
+    // But nothing new can be run across it.
+    const c = world.addColony(me.id, -200, 60, 900);
+    expect(world.canConnect(me.id, c.id, b.id)).toEqual({ ok: false, reason: "no line of sight" });
+  });
+
   // Rival at (0,0), me at (200,0). A wall from me with its crossbar at (100,0)
   // sits across the line between us.
   function standoff() {
@@ -435,14 +456,22 @@ describe("walls", () => {
     expect(world.canConnect(me.id, a.id, c.id).ok).toBe(true);
   });
 
-  it("severs an existing drain that crosses the new crossbar", () => {
+  it("does not sever a drain already crossing the new crossbar", () => {
     const { world, me, rival, mine, theirs } = standoff();
     world.enqueue({ type: "connect", player: rival.id, from: mine.id, to: theirs.id });
     world.step();
     expect(world.pipes.size).toBe(1);
     world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
     world.step();
-    expect(world.pipes.size).toBe(0);
+    expect(world.barriers.size).toBe(1);
+    // Walling an established line does not cut it - a wall denies new ground, it
+    // is not a delete button for connections that already exist.
+    expect(world.pipes.size).toBe(1);
+    // It does stop them running another one across.
+    const second = world.addColony(rival.id, theirs.x, theirs.y + 40, 200);
+    expect(world.canConnect(rival.id, mine.id, second.id)).toEqual({
+      ok: false, reason: "no line of sight",
+    });
   });
 
   it("disappears with its colony and can be demolished only by its owner", () => {

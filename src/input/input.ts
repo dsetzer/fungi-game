@@ -6,7 +6,6 @@ import {
 } from "../config";
 import type { Camera } from "../render/camera";
 import { distToSegmentSq, type Vec } from "../sim/geometry";
-import { distToPipeSq } from "../render/pipePath";
 import type { Command, EntityId, GameNode, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 
@@ -104,7 +103,7 @@ export class Input {
     return best;
   }
 
-  /** Nearest hypha under the cursor, measured against the curve as drawn. */
+  /** Nearest hypha under the cursor. */
   private pipeAt(p: Vec): EntityId | null {
     const world = this.getWorld();
     const tol = 12 / this.camera.zoom;
@@ -114,7 +113,7 @@ export class Input {
       const a = world.nodes.get(pipe.from);
       const b = world.nodes.get(pipe.to);
       if (!a || !b) continue;
-      const d = distToPipeSq(p, a, b, pipe.id, pipe.from, pipe.to);
+      const d = distToSegmentSq(p.x, p.y, a.x, a.y, b.x, b.y);
       if (d < bestD) {
         bestD = d;
         best = pipe.id;

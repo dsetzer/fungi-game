@@ -5,7 +5,6 @@ import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
-import { pipeCurve, quadPoint, quadTangent } from "./pipePath";
 import { TerrainCache } from "./terrain";
 import { TerritoryLayer } from "./territory";
 
@@ -236,34 +235,28 @@ export class Renderer {
     const src = world.nodes.get(pipe.from)!;
     const dst = world.nodes.get(pipe.to)!;
     const color = world.player(pipe.owner)?.color ?? "#888";
-    // Curve geometry is fixed by the node pair, so reversing turns the arrows
-    // around without the thread itself jumping to the other side.
-    const { a, b, c, flipped } = pipeCurve(src, dst, pipe.id, pipe.from, pipe.to);
-
+    // Drawn straight, exactly as the sim sees it: hyphae block one another
+    // (§6.2), so the player has to be able to read where each line runs.
     ctx.strokeStyle = color;
     ctx.globalAlpha = hovered ? 0.9 : 0.45;
     ctx.lineWidth = hovered ? 4 : 2;
     ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.quadraticCurveTo(c.x, c.y, b.x, b.y);
+    ctx.moveTo(src.x, src.y);
+    ctx.lineTo(dst.x, dst.y);
     ctx.stroke();
     ctx.globalAlpha = 1;
 
     // Arrowheads travelling the way the nutrients go.
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const len = Math.hypot(dst.x - src.x, dst.y - src.y);
     const count = Math.max(2, Math.floor(len / 45));
     const phase = (timeMs / 1000) * 0.6;
     const size = hovered ? 6 : 4.5;
+    const dx = (dst.x - src.x) / (len || 1);
+    const dy = (dst.y - src.y) / (len || 1);
     ctx.fillStyle = color;
     for (let i = 0; i < count; i++) {
-      const travelled = (phase + i / count) % 1;
-      const t = flipped ? 1 - travelled : travelled;
-      const p = quadPoint(a, c, b, t);
-      const tan = quadTangent(a, c, b, t);
-      const m = Math.hypot(tan.x, tan.y) || 1;
-      // Point the head along the direction of flow, not along the curve's own order.
-      const dx = (tan.x / m) * (flipped ? -1 : 1);
-      const dy = (tan.y / m) * (flipped ? -1 : 1);
+      const t = (phase + i / count) % 1;
+      const p = { x: src.x + (dst.x - src.x) * t, y: src.y + (dst.y - src.y) * t };
       ctx.beginPath();
       ctx.moveTo(p.x + dx * size, p.y + dy * size);
       ctx.lineTo(p.x - dx * size * 0.6 - dy * size * 0.55, p.y - dy * size * 0.6 + dx * size * 0.55);

@@ -270,6 +270,41 @@ describe("pipes", () => {
     expect(b.nutrients).toBeCloseTo(b0 + PIPE_RATE_PER_SEC);
   });
 
+  it("refuses a hypha that would cross an existing one, whoever grew it", () => {
+    const { world, me } = soloWorld();
+    const rival = world.addPlayer("rival", true);
+    // Long enough that the rival's territory sits well clear of the crossing.
+    const left = world.addColony(rival.id, -400, 0, 1000);
+    const right = world.addColony(rival.id, 400, 0, 1000);
+    world.enqueue({ type: "connect", player: rival.id, from: left.id, to: right.id });
+    world.step();
+    const top = world.addColony(me.id, 0, 100, 200);
+    const bottom = world.addColony(me.id, 0, -100, 200);
+    expect(world.canConnect(me.id, top.id, bottom.id)).toEqual({ ok: false, reason: "crosses a hypha" });
+  });
+
+  it("can't eject across a hypha, since ejecting grows one", () => {
+    const { world, me } = soloWorld();
+    const left = world.addColony(me.id, -100, 0, 200);
+    const right = world.addColony(me.id, 100, 0, 200);
+    world.enqueue({ type: "connect", player: me.id, from: left.id, to: right.id });
+    world.step();
+    const top = world.addColony(me.id, 0, 100, 200);
+    expect(world.canEject(me.id, top.id, { x: 0, y: -60 })).toEqual({ ok: false, reason: "crosses a hypha" });
+    expect(world.canEject(me.id, top.id, { x: 60, y: 160 }).ok).toBe(true);
+  });
+
+  it("lets hyphae meet at a shared colony", () => {
+    const { world, me } = soloWorld();
+    const hub = world.addColony(me.id, 0, 0, 200);
+    const a = world.addColony(me.id, 120, 0, 200);
+    const b = world.addColony(me.id, 0, 120, 200);
+    world.enqueue({ type: "connect", player: me.id, from: hub.id, to: a.id });
+    world.step();
+    expect(world.canConnect(me.id, hub.id, b.id).ok).toBe(true);
+    expect(world.canConnect(me.id, a.id, b.id).ok).toBe(true);
+  });
+
   it("reverses a hypha in place, flipping which way nutrients move", () => {
     const { world, me } = soloWorld();
     const a = world.addColony(me.id, 0, 0, 200);

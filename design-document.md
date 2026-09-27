@@ -85,6 +85,7 @@ Dragging from one node to another grows a hypha/pipeline that continuously moves
 - **Pipeline reach is resource-dependent**, same as ejection range (Section 5) — a richer node can reach further.
 - **Flow can be reversed in place:** left-clicking a hypha you grew flips which way nutrients move along it, keeping the same connection (the node that becomes the new source needs a free output). Rerouting a network is therefore a click rather than a cut-and-regrow, which matters when reach has since shrunk and the connection could not be rebuilt.
 - **Line-of-sight matters:** a pipeline can only form (and, presumably, only persists) along an unobstructed straight line between the two node centers — walls block it (Section 4).
+- **Hyphae never cross.** A new hypha can't be grown across an existing one, whoever grew it — ejecting included, since it grows a hypha too. Two hyphae meeting at a shared node aren't crossing. Every hypha is therefore also a barrier: a network's lines fence off the ground behind them from new connections, rivals' included. Hyphae are drawn as straight lines, exactly where they run, so this is readable at a glance.
 
 ### 6.3 Draining — Taking From Others
 

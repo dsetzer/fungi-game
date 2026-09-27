@@ -235,6 +235,19 @@ export class World {
     return true;
   }
 
+  /**
+   * Hyphae never cross (§6.2): a new line is refused if it crosses any existing
+   * hypha, whoever grew it. Two hyphae meeting at a shared node aren't crossing.
+   */
+  crossesHypha(a: Vec, b: Vec): boolean {
+    for (const pipe of this.pipes.values()) {
+      const u = this.nodes.get(pipe.from);
+      const v = this.nodes.get(pipe.to);
+      if (u && v && segmentsIntersect(a, b, u, v)) return true;
+    }
+    return false;
+  }
+
   wallCount(nodeId: EntityId): number {
     let c = 0;
     for (const b of this.barriers.values()) if (b.anchor === nodeId) c++;
@@ -299,6 +312,7 @@ export class World {
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
     if (!this.isFreeSpot(target, NODE_SPACING, player)) return NO("inside rival territory");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
+    if (this.crossesHypha(from, target)) return NO("crosses a hypha");
     return YES;
   }
 
@@ -318,6 +332,7 @@ export class World {
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");
     if (!this.hasLineOfSight(from, to)) return NO("no line of sight");
+    if (this.crossesHypha(from, to)) return NO("crosses a hypha");
     return YES;
   }
 

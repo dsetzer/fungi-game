@@ -73,10 +73,10 @@ export class Input {
     const step = (PAN_SPEED * dtMs) / 1000 / this.camera.zoom;
     const panning = ["w", "a", "s", "d"].some((k) => this.keys.has(k));
     if (panning) this.camera.cancelFly(); // keys take the camera back off autopilot
-    if (this.keys.has("w")) this.camera.y -= step;
-    if (this.keys.has("s")) this.camera.y += step;
-    if (this.keys.has("a")) this.camera.x -= step;
-    if (this.keys.has("d")) this.camera.x += step;
+    if (this.keys.has("w")) this.camera.moveBy(0, -step);
+    if (this.keys.has("s")) this.camera.moveBy(0, step);
+    if (this.keys.has("a")) this.camera.moveBy(-step, 0);
+    if (this.keys.has("d")) this.camera.moveBy(step, 0);
     this.hoverWall = this.wallAt(this.cursor);
     this.hoverPipe = this.hoverWall == null ? this.pipeAt(this.cursor) : null;
     // Pointer cursor over anything a click acts on, so reversing is discoverable.
@@ -151,14 +151,13 @@ export class Input {
 
   private onMove = (e: PointerEvent) => {
     const r = this.right;
-    if (r?.moved && r.wallFrom == null) this.camera.cancelFly(); // dragging the map
     if (r) {
       const dx = e.offsetX - r.sx;
       const dy = e.offsetY - r.sy;
       if (!r.moved && Math.hypot(dx, dy) > CLICK_SLOP) r.moved = true;
       if (r.moved && r.wallFrom == null) {
-        this.camera.x -= dx / this.camera.zoom;
-        this.camera.y -= dy / this.camera.zoom;
+        // Dragging the map: eased, so it glides after the mouse.
+        this.camera.panBy(-dx / this.camera.zoom, -dy / this.camera.zoom);
         r.sx = e.offsetX;
         r.sy = e.offsetY;
       }
@@ -176,9 +175,11 @@ export class Input {
       if (target && target.id !== from) {
         this.send({ type: "connect", player, from, to: target.id });
       } else if (!target) {
+        // Only follow a throw that will actually happen: out of reach, blocked or
+        // otherwise refused, nothing lands, so the camera stays put.
+        const lands = this.getWorld().canEject(player, from, this.cursor, this.ejectFraction).ok;
         this.send({ type: "eject", player, from, ...this.cursor, fraction: this.ejectFraction });
-        // Follow the throw to where it lands.
-        if (CAMERA_FLY_ON_EJECT) this.camera.flyTo(this.cursor.x, this.cursor.y);
+        if (CAMERA_FLY_ON_EJECT && lands) this.camera.flyTo(this.cursor.x, this.cursor.y);
       }
       this.drag = null;
       this.leftPress = null;

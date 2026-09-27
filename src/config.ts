@@ -104,6 +104,8 @@ export function radiusForPlayers(players: number): number {
 // Camera
 /** Time constant of the eased fly-to: lower is snappier. */
 export const CAMERA_FLY_TAU_MS = 160;
+/** Drag-panning eases too, but tighter, so the map still feels held by the mouse. */
+export const CAMERA_PAN_TAU_MS = 70;
 /** Follow a newly thrown colony to where it lands. */
 export const CAMERA_FLY_ON_EJECT = true;
 

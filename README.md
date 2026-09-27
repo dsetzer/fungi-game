@@ -41,10 +41,15 @@ port 8787.
 
 ### Hosting
 
-Every push to `main` publishes the client to GitHub Pages (`.github/workflows/pages.yml`), where
-it plays solo unless a visitor enters a server. A page served over https can only reach **wss**
-servers, so a server meant to be joined from there needs a certificate browsers trust for its
-hostname. Two ways:
+**The real game is the server.** Like any .io game, players visit the game server's own web
+address: after `npm run build` it serves the client and the game connection from the same place.
+
+**GitHub Pages is a demo.** Every push to `main` publishes the client there
+(`.github/workflows/pages.yml`), where it plays solo against bots. A visitor can also enter a
+server to join, but a page served over https can only reach servers using **wss** — so a remote
+server joined from Pages must serve wss (below). Otherwise, visit the server's own address or run
+the client locally. A server serves wss with a certificate browsers trust for its hostname. Two
+ways:
 
 - **Serve wss directly:** set `TLS_CERT` and `TLS_KEY` to the paths of a PEM certificate and key
   (e.g. from Let's Encrypt for a domain pointing at the machine), and the server speaks https/wss

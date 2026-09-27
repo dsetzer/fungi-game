@@ -87,16 +87,20 @@ function serverUrl(server: string): string {
 }
 
 /**
- * The server field starts with the last one used. Failing that, running locally
- * or served by the game server itself suggests that server, so local play is
- * still one click; anywhere else (a static host) it starts empty, meaning solo.
+ * The server field starts with the last one used. Failing that it depends on
+ * where the page came from:
+ * - served by the game server itself (the real .io setup) → that same server, so
+ *   Play joins the game you're on;
+ * - the Vite dev server → the local game server on its own port;
+ * - a static demo build (GitHub Pages, VITE_STATIC_DEMO=1) → empty, meaning solo.
  */
 function defaultServer(): string {
   const saved = localStorage.getItem("fungi.server");
   if (saved !== null) return saved;
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
-  if (local || location.port === String(SERVER_PORT)) return `${location.hostname}:${SERVER_PORT}`;
-  return "";
+  if (import.meta.env.VITE_STATIC_DEMO === "1") return "";
+  if (import.meta.env.DEV) return `${location.hostname}:${SERVER_PORT}`;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}`;
 }
 
 function pickName(): string {

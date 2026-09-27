@@ -29,7 +29,10 @@ jobs:
       - run: npm ci
       - run: npm test
       # Pages serves the site under /<repo>/, so asset paths need that prefix.
+      # A static demo: the menu's server field starts empty, so the page plays solo.
       - run: npm run build -- --base=/${{ github.event.repository.name }}/
+        env:
+          VITE_STATIC_DEMO: "1"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

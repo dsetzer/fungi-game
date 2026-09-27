@@ -5,6 +5,7 @@ import type { GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
+import { GrowthTracker, easeOutBack } from "./growth";
 import { TerrainCache } from "./terrain";
 import { TerritoryLayer } from "./territory";
 
@@ -29,6 +30,7 @@ export class Renderer {
   private terrain = new TerrainCache();
   /** Recreated when the round does, so a new arena starts fully fogged. */
   private fog: { arena: World["arena"]; fog: FogOfWar } | null = null;
+  private growth = new GrowthTracker();
 
   constructor(private canvas: HTMLCanvasElement, private camera: Camera) {
     this.ctx = canvas.getContext("2d")!;
@@ -63,6 +65,7 @@ export class Renderer {
     fog.update(world, player);
     const seen = fog.visibleNodes(world, player);
     const shown = (id: number) => seen.has(id);
+    this.growth.update(world, timeMs);
     const tFog1 = performance.now();
 
     this.drawFloor(world);
@@ -86,7 +89,7 @@ export class Renderer {
       this.drawReachRing(world, hovered);
     }
     for (const n of world.nodes.values()) {
-      if (shown(n.id)) this.drawNode(world, n, n === hovered, player);
+      if (shown(n.id)) this.drawNode(world, n, n === hovered, player, timeMs);
     }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
@@ -230,46 +233,55 @@ export class Renderer {
     }
   }
 
+  /**
+   * A hypha is a chain of V-shaped chevrons with no line under it, fattest in the
+   * middle and tapering to points at both ends, always travelling the way the
+   * nutrients go. It runs dead straight, exactly as the sim sees it: hyphae block
+   * one another (§6.2), so the player has to be able to read where each runs.
+   * Sizes are in screen pixels so it reads the same at any zoom.
+   */
   private drawPipe(world: World, pipe: Pipe, timeMs: number, hovered: boolean): void {
     const { ctx } = this;
     const src = world.nodes.get(pipe.from)!;
     const dst = world.nodes.get(pipe.to)!;
     const color = world.player(pipe.owner)?.color ?? "#888";
-    // Drawn straight, exactly as the sim sees it: hyphae block one another
-    // (§6.2), so the player has to be able to read where each line runs.
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = hovered ? 0.9 : 0.45;
-    ctx.lineWidth = hovered ? 4 : 2;
-    ctx.beginPath();
-    ctx.moveTo(src.x, src.y);
-    ctx.lineTo(dst.x, dst.y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    const zoom = this.camera.zoom;
+    const full = Math.hypot(dst.x - src.x, dst.y - src.y);
+    if (full === 0) return;
+    // A new hypha shoots out from its source; until it arrives it is shorter,
+    // and tapers over what has grown so far.
+    const len = full * this.growth.grown(pipe.id, timeMs);
+    if (len <= 0) return;
+    const dx = (dst.x - src.x) / full;
+    const dy = (dst.y - src.y) / full;
 
-    // Arrowheads travelling the way the nutrients go.
-    const len = Math.hypot(dst.x - src.x, dst.y - src.y);
-    const count = Math.max(2, Math.floor(len / 45));
-    const phase = (timeMs / 1000) * 0.6;
-    const size = hovered ? 6 : 4.5;
-    const dx = (dst.x - src.x) / (len || 1);
-    const dy = (dst.y - src.y) / (len || 1);
+    const base = (hovered ? 9 : 7.5) / zoom; // half-length of a chevron at its fattest
+    const spacing = 10 / zoom;
+    const offset = ((timeMs / 1000) * (45 / zoom)) % spacing; // the flow, crawling along
     ctx.fillStyle = color;
-    for (let i = 0; i < count; i++) {
-      const t = (phase + i / count) % 1;
-      const p = { x: src.x + (dst.x - src.x) * t, y: src.y + (dst.y - src.y) * t };
+    for (let d = offset; d < len; d += spacing) {
+      const u = d / len;
+      const s = base * (0.3 + 0.7 * Math.sin(u * Math.PI));
+      const x = src.x + dx * d;
+      const y = src.y + dy * d;
+      // Tip ahead, two swept-back wings, and a notch between them: a "V".
       ctx.beginPath();
-      ctx.moveTo(p.x + dx * size, p.y + dy * size);
-      ctx.lineTo(p.x - dx * size * 0.6 - dy * size * 0.55, p.y - dy * size * 0.6 + dx * size * 0.55);
-      ctx.lineTo(p.x - dx * size * 0.6 + dy * size * 0.55, p.y - dy * size * 0.6 - dx * size * 0.55);
+      ctx.moveTo(x + dx * s, y + dy * s);
+      ctx.lineTo(x - dx * s * 0.8 - dy * s * 0.75, y - dy * s * 0.8 + dx * s * 0.75);
+      ctx.lineTo(x - dx * s * 0.25, y - dy * s * 0.25);
+      ctx.lineTo(x - dx * s * 0.8 + dy * s * 0.75, y - dy * s * 0.8 - dx * s * 0.75);
       ctx.closePath();
       ctx.fill();
     }
   }
 
   /** A node is just a point: a fixed-size dot. Its size lives in the aura. */
-  private drawNode(world: World, n: GameNode, hovered: boolean, player: number): void {
+  private drawNode(world: World, n: GameNode, hovered: boolean, player: number, timeMs: number): void {
     const { ctx } = this;
-    const r = world.radiusOf(n);
+    // A new colony swells into place; one a hypha just landed on gives a bump.
+    const formed = this.growth.formed(n.id, timeMs);
+    if (formed <= 0) return;
+    const r = world.radiusOf(n) * easeOutBack(formed) * (1 + 0.35 * this.growth.pulse(world, n.id, timeMs));
     const color = n.kind === "fall" ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
     // Your own colonies draw hollow while they're too poor to throw, so a colony
     // you can't expand from is obvious before you try to drag off it.
@@ -299,7 +311,9 @@ export class Renderer {
   /** Fluid areas (metaballs), rendered in screen space and composited here. */
   private drawAuras(world: World, timeMs: number, shown: (id: number) => boolean): void {
     const { ctx, camera } = this;
-    const layer = this.territory.render(world, camera, timeMs, shown);
+    const layer = this.territory.render(world, camera, timeMs, shown, (id) =>
+      easeOutBack(this.growth.formed(id, timeMs)),
+    );
     ctx.save();
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

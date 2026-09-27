@@ -125,14 +125,15 @@ export class TerritoryLayer {
     camera: Camera,
     timeMs: number,
     shown: (id: number) => boolean = () => true,
+    scaleOf: (id: number) => number = () => 1,
   ): HTMLCanvasElement {
-    if (this.gpu.available && this.gpu.render(world, camera, timeMs, shown)) {
+    if (this.gpu.available && this.gpu.render(world, camera, timeMs, shown, scaleOf)) {
       this.usingGpu = true;
       return this.gpu.canvas;
     }
     this.usingGpu = false;
     this.cpu ??= new CpuTerritory();
-    this.cpu.render(world, camera, timeMs, shown);
+    this.cpu.render(world, camera, timeMs, shown, scaleOf);
     return this.cpu.canvas;
   }
 }
@@ -154,13 +155,16 @@ function collectBalls(
   h: number,
   shown: (id: number) => boolean,
   layerOf: (id: PlayerId) => number,
+  scaleOf: (id: number) => number,
 ): Ball[] {
   const out: Ball[] = [];
   const k = camera.zoom * scale;
   for (const n of world.nodes.values()) {
     const layer = n.owner == null ? 0 : layerOf(n.owner);
     if (layer >= MAX_LAYERS || !shown(n.id)) continue;
-    const r = world.auraOf(n) * k;
+    const grow = scaleOf(n.id); // a forming colony's territory swells in with it
+    if (grow <= 0) continue;
+    const r = world.auraOf(n) * k * grow;
     const x = ((n.x - camera.x) * camera.zoom + camera.width / 2) * scale;
     const y = ((n.y - camera.y) * camera.zoom + camera.height / 2) * scale;
     const pad = r * REACH * 1.1;
@@ -251,12 +255,18 @@ class CpuTerritory {
    */
   private step = CpuTerritory.STEPS[0];
 
-  render(world: World, camera: Camera, _timeMs: number, shown: (id: number) => boolean): void {
+  render(
+    world: World,
+    camera: Camera,
+    _timeMs: number,
+    shown: (id: number) => boolean,
+    scaleOf: (id: number) => number,
+  ): void {
     const layerOf = layerAssigner(world);
     // Collect in CSS pixels first, then pick a resolution that keeps the work
     // bounded: zoomed out there are far more blobs on screen, and at a fixed
     // resolution this fallback spiked past 50ms a frame.
-    const cssBalls = collectBalls(world, camera, 1, camera.width, camera.height, shown, layerOf);
+    const cssBalls = collectBalls(world, camera, 1, camera.width, camera.height, shown, layerOf, scaleOf);
     // Cost is what actually gets written, so measure each ball's bounding box
     // *clipped to the viewport* — the accumulation loop clips it too. Measuring the
     // unclipped box made one blob larger than the screen look arbitrarily expensive,
@@ -558,7 +568,13 @@ class GpuTerritory {
   }
 
   /** Renders the current frame into `this.canvas`. Returns false if unavailable. */
-  render(world: World, camera: Camera, timeMs: number, shown: (id: number) => boolean): boolean {
+  render(
+    world: World,
+    camera: Camera,
+    timeMs: number,
+    shown: (id: number) => boolean,
+    scaleOf: (id: number) => number,
+  ): boolean {
     const gl = this.gl;
     if (!gl || !this.prog) return false;
 
@@ -573,7 +589,7 @@ class GpuTerritory {
 
     // Balls in buffer pixel space, y flipped for gl_FragCoord.
     const layerOf = layerAssigner(world);
-    const balls = collectBalls(world, camera, scale, w, h, shown, layerOf);
+    const balls = collectBalls(world, camera, scale, w, h, shown, layerOf, scaleOf);
     // .w packs layer and the node's stable wobble seed: layer * 1000 + seed.
     balls.forEach((b, i) => this.balls.set([b.x, h - b.y, b.r, b.layer * 1000 + b.seed], i * 4));
     const count = balls.length;

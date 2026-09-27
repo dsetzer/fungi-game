@@ -142,30 +142,36 @@ A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral
 
 The economics follow from that: holding a boost costs throughput every second, so a player sitting on several is spending real economy and is correspondingly thin elsewhere.
 
-**Abilities are activated, not passive, and they are spent one use at a time.** Holding a boost gives no standing bonus. Each one appears on the player's screen as an ability that is *clicked, or fired with a number hotkey*; firing it arms a single action, and once that action is taken the ability goes on cooldown. It stays reusable for as long as the player holds the boost and keeps it sustained — and boost nodes carry an upkeep cost, so holding one is a continuing expense whether or not it is ever fired.
+**Most boosts are passive.** Holding one gives its benefit to your whole network for as long as you keep the node fed, and losing the node loses the benefit at once. There is no button and no cooldown — just a point on the map worth keeping.
 
-One use per activation rather than a timed window is what keeps them tactical: the player chooses the *moment* and the *target*, and a wasted activation costs them the cooldown. It also means an ability is a decision, not a period during which everything is simply better.
+**A passive boost may only add options, never change what an existing network is already doing.** Extra range, extra outputs and a wider view leave a built network behaving exactly as before; the player chooses whether to use them, and losing the boost takes the option away without rebalancing anything. A boost that sped up every hypha fails this test: colonies set up for the normal rate would start bleeding, and losing it would rebalance the whole network under the player.
 
-That is the shape of the whole feature: a boost is a contested point you pay to keep, that gives you a button rather than a buff.
+**Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey; firing it arms a single action, and once that action is taken it goes on cooldown. It stays usable for as long as the boost is held.
 
 ### The base list
 
-| Ability | One activation buys | Notes |
-|---|---|---|
-| **Long Reach** | The next hypha you create may be made at long range. | The range bonus is **large** — in the original it typically put a quarter of the map within reach, spanning obstacles. At the current arena that is roughly 2,700 units against a mid-sized colony's ~800, so it is a relocation tool, not a small extension. |
-| **Rapid Flow** | Click a hypha to upgrade it, raising the rate or amount it carries. | Targeted at one hypha rather than the whole network. |
-| **Vision** | Extends the view radius significantly. | The one ability that does not obviously reduce to a single targeted action. |
-| **Scissors** | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Scissors cuts one attached to their own colonies even when they don't own it — and in fact cuts *any* hypha on the map, owned by anyone, attached to anyone. The cooldown is what pays for that. |
+| Boost | Kind | Effect | Notes |
+|---|---|---|---|
+| **Branch** | Passive | Every colony you own gets **+1 output**. | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. |
+| **Reach** | Passive | Every colony's ejection and hypha reach increases. | Line of sight still applies, so enclaves and chokepoints are unaffected. The bonus is always on, so it should be well under the +100% considered for a one-shot version. |
+| **Vision** | Passive | A larger view radius for everything you own. | |
+| **Distribute** | Activated | Click one of your colonies: its nutrients leave as a pulse that travels down the chain, giving each colony it reaches an equal share. | See below. |
+| **Scissors** | Activated | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Scissors cuts *any* hypha on the map, owned by anyone, attached to anyone — the answer to being drained by someone out of reach. The cooldown is what pays for that. |
 
-Scissors is the one that changes an existing rule rather than scaling a number: it is the answer to being drained by someone out of reach, which the ownership rule otherwise leaves a player no response to.
+**Distribute** in detail:
 
-> **Numbers still to choose:** each ability's cooldown and magnitude; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
+- The pulse follows hypha direction — downstream, the way nutrients already flow — through your own colonies only. Upstream colonies, rival colonies and falls are untouched, so the player steers it by how the network is wired.
+- Every colony it reaches gets an equal share: the lump shrinks by the same amount at each stop and is spent at the last one.
+- At a fork it splits in proportion to how many colonies lie down each branch, so the shares stay equal.
+- It travels visibly, roughly a third of a second per hop, and each colony swells as the pulse arrives.
+- It has to be activated: usable at will, it would teleport nutrients anywhere and make hyphae irrelevant for moving resources.
+
+> **Numbers still to choose:** Reach's bonus; Distribute's and Scissors' cooldowns; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
 
 > **Still to pin down:**
-> - **Does Long Reach ignore line of sight, or only distance?** "Over obstacles and everything" suggests the long connection is not blocked by terrain or crossbars at all. That is a much stronger ability than extra range — it would make walls and chokepoints temporarily irrelevant — and it changes the implementation rather than a constant.
-> - **Is a Rapid Flow upgrade permanent or does it wear off?** Permanent means a player accumulates upgraded trunk lines over a round and the ability is an investment; temporary makes it a burst for a fight. Undecided.
-> - **What shape is Vision?** Every other ability resolves to one targeted click. Vision could be a one-shot reveal of a chosen area, or the one ability that keeps a duration.
-> - Whether holding several boosts gives several buttons at once, and whether two of the same stack.
+> - Whether two of the same passive boost stack (two Branch nodes = +2 outputs?).
+> - How much of its store the colony that fires Distribute sends — all of it, or a share like ejecting — and how the pulse treats a loop (each colony once).
+> - Whether a fall-yield boost joins the list: draining a fall yields 3 → 5 instead of 3 → 4, doubling what a sustain loop pays. It passes the passive rule.
 > - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.
 > - Whether an armed-but-unused ability can be cancelled, and whether losing the boost while armed cancels it.
 
@@ -202,7 +208,7 @@ These are the gaps left after reconstructing the mechanics from memory — worth
 - Which mouse button performs the eject/pipeline drag, and what the other button is reserved for (Section 6).
 - Numeric tuning: starting nutrient pool, per-tick upkeep cost (confirmed to be 1, but is it always 1 regardless of node size?), ejected-node starting buffer, pipeline throughput rate, max pipelines per node, wall segment cost/length, the exact curve relating a node's resources to its ejection range / pipeline reach / physical radius.
 - Whether nutrient falls pay upkeep themselves (Section 6.4).
-- Section 6.7's remaining numbers: ability durations, cooldowns and magnitudes, boost upkeep, and boost count per map.
+- Section 6.7's remaining numbers: the Reach bonus, the two activated boosts' cooldowns, boost upkeep, and boost count per map.
 - Player count per match and whether AI fills empty slots.
 - Any meta-progression between matches, or is each round fully self-contained.
 - Whether an established pipeline can be destroyed/severed directly (e.g., an enemy cutting through it, or a wall built after the fact retroactively cutting it), or only made moot by killing an endpoint.
@@ -220,4 +226,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Boosts as capture points (Section 6.7) — four abilities specified; numbers and UI still to build.
+9. Boosts as capture points (Section 6.7) — five boosts specified (three passive, two activated); numbers and UI still to build.

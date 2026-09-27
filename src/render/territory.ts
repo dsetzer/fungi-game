@@ -58,6 +58,12 @@ void main() {
     if (i >= uCount) break;
     vec4 b = uBalls[i];
     vec2 d = p - b.xy;
+    // Most pixels are nowhere near most blobs. Skip them before the trig below:
+    // the wobble never swells a blob past 1.08x, so outside that it contributes
+    // nothing. Without this, every pixel paid an atan and two sins for every blob
+    // on screen, and a long network drove a frame to hundreds of milliseconds.
+    float reachMax = b.z * ${(REACH * 1.08).toFixed(3)};
+    if (dot(d, d) >= reachMax * reachMax) continue;
     // Slow wobble of the edge so the areas feel fluid rather than drawn.
     float ang = atan(d.y, d.x);
     int layer = int(b.w / 1000.0);

@@ -138,6 +138,12 @@ body {
   color: #888;
 }
 
+#menu small {
+  font-size: 11px;
+  color: #aaa;
+  text-align: center;
+}
+
 #menu button {
   font: inherit;
   font-size: 15px;

@@ -35,6 +35,7 @@ let net: NetClient | null = null;
 // The menu: a name, and optionally a server. Empty server = solo against bots, so
 // a build hosted without a game server (GitHub Pages) still plays.
 menuName.value = pickName();
+document.getElementById("menu-version")!.textContent = __APP_VERSION__;
 menuServer.value = defaultServer();
 menu.addEventListener("submit", (e) => {
   e.preventDefault();

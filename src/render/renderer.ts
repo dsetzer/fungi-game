@@ -125,6 +125,7 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const p = this.perf;
     const lines = [
+      __APP_VERSION__,
       `frame ${p.frame.toFixed(1)}ms`,
       `vision ${p.vision.toFixed(1)}`,
       `auras ${p.auras.toFixed(1)} ${p.gpuAuras ? "(gpu)" : "(cpu)"}`,

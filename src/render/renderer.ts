@@ -23,6 +23,9 @@ const COLORS = {
 };
 
 const DEATH_WARN_SECONDS = 20;
+/** Hypha chevrons: gap between them, and how fast they crawl, in screen pixels. */
+const CHEVRON_GAP_PX = 10;
+const CHEVRON_SPEED_PX = 45;
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -31,6 +34,14 @@ export class Renderer {
   /** Recreated when the round does, so a new arena starts fully fogged. */
   private fog: { arena: World["arena"]; fog: FogOfWar } | null = null;
   private growth = new GrowthTracker();
+  /**
+   * How far the hypha chevrons have crawled, in screen pixels within one gap.
+   * Advanced per frame, never by more than a bit under half a gap: at a low frame
+   * rate a larger step makes the eye pair each chevron with the one behind it, so
+   * the flow looks like it runs backwards. Slow frames crawl slower instead.
+   */
+  private flowPx = 0;
+  private lastDrawMs = 0;
 
   constructor(private canvas: HTMLCanvasElement, private camera: Camera) {
     this.ctx = canvas.getContext("2d")!;
@@ -66,6 +77,9 @@ export class Renderer {
     const seen = fog.visibleNodes(world, player);
     const shown = (id: number) => seen.has(id);
     this.growth.update(world, timeMs);
+    const sinceLast = this.lastDrawMs ? timeMs - this.lastDrawMs : 0;
+    this.lastDrawMs = timeMs;
+    this.flowPx = (this.flowPx + Math.min((sinceLast / 1000) * CHEVRON_SPEED_PX, CHEVRON_GAP_PX * 0.4)) % CHEVRON_GAP_PX;
     const tFog1 = performance.now();
 
     this.drawFloor(world);
@@ -257,8 +271,8 @@ export class Renderer {
     const dy = (dst.y - src.y) / full;
 
     const base = (hovered ? 9 : 7.5) / zoom; // half-length of a chevron at its fattest
-    const spacing = 10 / zoom;
-    const offset = ((timeMs / 1000) * (45 / zoom)) % spacing; // the flow, crawling along
+    const spacing = CHEVRON_GAP_PX / zoom;
+    const offset = this.flowPx / zoom; // the flow, crawling along
     ctx.fillStyle = color;
     for (let d = offset; d < len; d += spacing) {
       const u = d / len;

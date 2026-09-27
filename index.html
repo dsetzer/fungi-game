@@ -10,6 +10,13 @@
     <canvas id="game"></canvas>
     <div id="hud"></div>
     <div id="banner" hidden></div>
+    <form id="menu" autocomplete="off">
+      <h1>Fungi</h1>
+      <label>Name <input id="menu-name" maxlength="16" required /></label>
+      <label>Server <input id="menu-server" placeholder="Leave empty to play solo" spellcheck="false" /></label>
+      <p>Solo is a local match against bots. To play online, enter a game server as <i>host:port</i>.</p>
+      <button type="submit">Play</button>
+    </form>
     <div id="help">
       <b>Left-drag</b> from a colony: to empty space = eject, to a node = grow hypha (flows start → end)<br />
       <b>Left-click</b> a hypha = reverse its flow · <b>Right-click</b> a hypha / wall = cut / remove<br />

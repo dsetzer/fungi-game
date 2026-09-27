@@ -56,7 +56,10 @@ export class Input {
     canvas.addEventListener("pointerup", this.onUp);
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    window.addEventListener("keydown", (e) => this.keys.add(e.key.toLowerCase()));
+    window.addEventListener("keydown", (e) => {
+      if (e.target instanceof HTMLInputElement) return; // typing on the menu, not panning
+      this.keys.add(e.key.toLowerCase());
+    });
     window.addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener("blur", () => this.keys.clear());
   }

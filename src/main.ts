@@ -17,6 +17,9 @@ const GENERA = [
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const hud = document.getElementById("hud")!;
 const banner = document.getElementById("banner")!;
+const menu = document.getElementById("menu") as HTMLFormElement;
+const menuName = document.getElementById("menu-name") as HTMLInputElement;
+const menuServer = document.getElementById("menu-server") as HTMLInputElement;
 
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
@@ -26,38 +29,74 @@ let solo: World | null = null;
 let soloRestart: number | undefined;
 let centredOn: unknown = null;
 
-const name = pickName();
-const net = new NetClient(serverUrl(), name);
-net.onOffline = () => startSolo();
-net.onOnline = () => {
-  solo = null; // the server is authoritative again
-  clearTimeout(soloRestart);
-  soloRestart = undefined;
-  centredOn = null;
-  banner.hidden = true;
-};
-net.onRound = () => {
-  centredOn = null;
-  banner.hidden = true;
-};
-net.connect();
+/** Null until the player picks a server on the menu; solo play never makes one. */
+let net: NetClient | null = null;
+
+// The menu: a name, and optionally a server. Empty server = solo against bots, so
+// a build hosted without a game server (GitHub Pages) still plays.
+menuName.value = pickName();
+menuServer.value = defaultServer();
+menu.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = menuName.value.trim().slice(0, 16) || pickName();
+  const server = menuServer.value.trim();
+  localStorage.setItem("fungi.name", name);
+  localStorage.setItem("fungi.server", server);
+  menu.hidden = true;
+  if (server) connectTo(server, name);
+  else startSolo();
+});
+
+function connectTo(server: string, name: string): void {
+  net = new NetClient(serverUrl(server), name);
+  net.onOffline = () => startSolo();
+  net.onOnline = () => {
+    solo = null; // the server is authoritative again
+    clearTimeout(soloRestart);
+    soloRestart = undefined;
+    centredOn = null;
+    banner.hidden = true;
+  };
+  net.onRound = () => {
+    centredOn = null;
+    banner.hidden = true;
+  };
+  net.connect();
+}
 
 const placeholder = new World(emptyArena(1000));
-const currentWorld = () => net.world ?? solo ?? placeholder;
-const currentPlayer = () => (net.world ? net.you : SOLO_PLAYER);
+const currentWorld = () => net?.world ?? solo ?? placeholder;
+const currentPlayer = () => (net?.world ? net.you : SOLO_PLAYER);
 const sendCommand = (cmd: Command) => {
-  if (net.world) net.enqueue(cmd);
+  if (net?.world) net.enqueue(cmd);
   else solo?.enqueue(cmd);
 };
 
 const input = new Input(canvas, camera, currentWorld, currentPlayer, sendCommand);
 
-function serverUrl(): string {
+/**
+ * What the player typed, as a WebSocket URL. Accepts a full ws:// or wss:// URL,
+ * host:port, or a bare host (the default game port is assumed). An https page may
+ * only open wss:// connections, so the scheme follows the page's.
+ */
+function serverUrl(server: string): string {
+  if (/^wss?:\/\//i.test(server)) return server;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  // Served by the game server itself? Use this origin. Otherwise the dev server
-  // is on 5173 and the game server on its own port.
-  const port = location.port === String(SERVER_PORT) ? location.port : String(SERVER_PORT);
-  return `${proto}://${location.hostname}:${port}`;
+  const host = /:\d+$/.test(server) ? server : `${server}:${SERVER_PORT}`;
+  return `${proto}://${host}`;
+}
+
+/**
+ * The server field starts with the last one used. Failing that, running locally
+ * or served by the game server itself suggests that server, so local play is
+ * still one click; anywhere else (a static host) it starts empty, meaning solo.
+ */
+function defaultServer(): string {
+  const saved = localStorage.getItem("fungi.server");
+  if (saved !== null) return saved;
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  if (local || location.port === String(SERVER_PORT)) return `${location.hostname}:${SERVER_PORT}`;
+  return "";
 }
 
 function pickName(): string {
@@ -67,9 +106,7 @@ function pickName(): string {
   if (fromUrl) return fromUrl.slice(0, 16);
   const saved = localStorage.getItem("fungi.name");
   if (saved) return saved;
-  const fresh = GENERA[Math.floor(Math.random() * GENERA.length)];
-  localStorage.setItem("fungi.name", fresh);
-  return fresh;
+  return GENERA[Math.floor(Math.random() * GENERA.length)];
 }
 
 function startSolo(): void {
@@ -87,6 +124,7 @@ function restartSolo(): void {
 }
 
 window.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement) return; // typing on the menu
   if (e.key.toLowerCase() === "r" && solo) restartSolo();
   if (e.key.toLowerCase() === "f") renderer.showPerf = !renderer.showPerf;
 });
@@ -105,6 +143,7 @@ function centreOnHome(): void {
 }
 
 function updateHud(): void {
+  hud.hidden = !menu.hidden; // nothing to report until a game has started
   const world = currentWorld();
   const me = currentPlayer();
   const mine = [...world.nodes.values()].filter((n) => n.owner === me);
@@ -121,17 +160,21 @@ function updateHud(): void {
     rows.push(`<tr class="you"><td>${myRank + 1}.</td><td><i style="background:${p.color}"></i>${escape(p.name)}</td><td>${Math.round(p.score).toLocaleString()}</td></tr>`);
   }
 
-  const mode = net.connected
+  const mode = net?.connected
     ? `${net.online} online · round ${formatTime(net.endsIn)}`
     : solo
-      ? "offline · solo with bots (retrying server)"
-      : "connecting…";
+      ? net
+        ? "offline · solo with bots (retrying server)"
+        : "solo with bots"
+      : net
+        ? "connecting…"
+        : "";
   hud.innerHTML =
     `<table>${rows.join("")}</table>` +
     `<div class="stats">Colonies: <b>${mine.length}</b> · Nutrients: <b>${total}</b></div>` +
     `<div class="mode">${mode}</div>`;
 
-  if (net.status === "intermission") {
+  if (net?.status === "intermission") {
     banner.innerHTML = `${net.winner ? `${escape(net.winner.name)} gathered the most` : "Round over"}<small>New substrate in a moment…</small>`;
     banner.hidden = false;
   } else if (solo && solo.ended && soloRestart === undefined) {
@@ -159,7 +202,7 @@ function frame(now: number): void {
   last = now;
   acc += dt;
   while (acc >= TICK_MS) {
-    if (!net.world && solo) stepMatch(solo);
+    if (!net?.world && solo) stepMatch(solo);
     acc -= TICK_MS;
   }
   // One bad frame must never stop the loop: before this guard, a render error
@@ -189,7 +232,7 @@ if (import.meta.env.DEV) {
     game: {
       get world() { return currentWorld(); },
       get player() { return currentPlayer(); },
-      net, renderer, camera, input, get perf() { return renderer.perf; }, get solo() { return solo; },
+      get net() { return net; }, renderer, camera, input, get perf() { return renderer.perf; }, get solo() { return solo; },
     },
   });
 }

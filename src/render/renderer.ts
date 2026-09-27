@@ -121,6 +121,7 @@ export class Renderer {
     p.frame = ema(p.frame, tEnd - t0);
     p.gpuAuras = this.territory.usingGpu;
     p.fallbackReason = this.territory.fallbackReason;
+    p.gpuRenderer = this.territory.gpuRenderer;
     if (this.showPerf) this.drawPerf();
   }
 
@@ -129,6 +130,8 @@ export class Renderer {
     vision: 0, auras: 0, terrain: 0, entities: 0, fog: 0, frame: 0, gpuAuras: false, walls: 0,
     /** Why auras are on the CPU fallback, or null when the GPU path is running. */
     fallbackReason: null as string | null,
+    /** What WebGL runs on; "SwiftShader" means it is emulated on the CPU. */
+    gpuRenderer: "",
   };
   showPerf = false;
 
@@ -144,6 +147,7 @@ export class Renderer {
       `vision ${p.vision.toFixed(1)}`,
       `auras ${p.auras.toFixed(1)} ${p.gpuAuras ? "(gpu)" : "(cpu)"}`,
       ...(p.fallbackReason ? [`  └ ${p.fallbackReason}`] : []),
+      `  └ ${p.gpuRenderer.slice(0, 48)}`,
       `terrain ${p.terrain.toFixed(1)} · ${p.walls} circles`,
       `entities ${p.entities.toFixed(1)}`,
       `fog ${p.fog.toFixed(1)}`,

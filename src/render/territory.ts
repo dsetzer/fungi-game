@@ -38,13 +38,29 @@ const VERT = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
+/**
+ * The screen is cut into TILE_PX squares. Each frame the CPU lists, per tile, the
+ * balls whose reach overlaps it (binBalls), and a pixel only visits its own tile's
+ * list — a handful of balls instead of every one on screen. Looping over every
+ * ball for every pixel drove a frame to hundreds of milliseconds once a network
+ * spread. Every ball that can touch a pixel is in that pixel's tile list, so the
+ * field, and so the picture, is exactly what summing all balls would give.
+ */
+const TILE_PX = 32;
+/** Row width of the tile-list texture; lists are packed row after row. */
+const LIST_W = 4096;
+
 const FRAG = `#version 300 es
 precision highp float;
-#define MAX_BALLS ${MAX_BALLS}
+precision highp int;
+precision highp isampler2D;
 #define MAX_LAYERS ${MAX_LAYERS}
-uniform vec4 uBalls[MAX_BALLS]; // x, y (buffer px, y-up), radius px, layer*1000 + seed
+#define TILE_PX ${TILE_PX}
+#define LIST_W ${LIST_W}
+uniform sampler2D uBalls;   // a texel per ball: x, y (buffer px, y-up), radius px, layer*1000 + seed
+uniform isampler2D uTiles;  // a texel per tile: first index into uList, count
+uniform isampler2D uList;   // ball indices, LIST_W per row
 uniform vec4 uColors[MAX_LAYERS]; // rgb, alpha
-uniform int uCount;
 uniform float uTime;
 uniform float uBorderPx;
 out vec4 outColor;
@@ -54,14 +70,14 @@ void main() {
   float field[MAX_LAYERS];
   for (int l = 0; l < MAX_LAYERS; l++) field[l] = 0.0;
 
-  for (int i = 0; i < MAX_BALLS; i++) {
-    if (i >= uCount) break;
-    vec4 b = uBalls[i];
+  ivec2 span = texelFetch(uTiles, ivec2(p) / TILE_PX, 0).xy;
+  for (int k = 0; k < span.y; k++) {
+    int at = span.x + k;
+    int i = texelFetch(uList, ivec2(at % LIST_W, at / LIST_W), 0).r;
+    vec4 b = texelFetch(uBalls, ivec2(i, 0), 0);
     vec2 d = p - b.xy;
-    // Most pixels are nowhere near most blobs. Skip them before the trig below:
-    // the wobble never swells a blob past 1.08x, so outside that it contributes
-    // nothing. Without this, every pixel paid an atan and two sins for every blob
-    // on screen, and a long network drove a frame to hundreds of milliseconds.
+    // Tiles are coarse, so skip balls that reach the tile but not this pixel
+    // before the trig below: the wobble never swells a blob past 1.08x.
     float reachMax = b.z * ${(REACH * 1.08).toFixed(3)};
     if (dot(d, d) >= reachMax * reachMax) continue;
     // Slow wobble of the edge so the areas feel fluid rather than drawn.
@@ -118,6 +134,11 @@ export class TerritoryLayer {
    * renders at reduced resolution and upscales) plus a much slower frame — both
    * of which read as "the game got worse" rather than "the shader didn't load".
    */
+  /** The graphics renderer WebGL reports — shows whether it's emulated on the CPU. */
+  get gpuRenderer(): string {
+    return this.gpu.renderer;
+  }
+
   get fallbackReason(): string | null {
     return this.usingGpu ? null : this.gpu.failure ?? "unknown";
   }
@@ -512,8 +533,17 @@ class GpuTerritory {
   private prog: WebGLProgram | null = null;
   /** Set when WebGL2 or the shader is unusable, so the HUD can say why. */
   failure: string | null = null;
+  /**
+   * The graphics renderer the browser reports. "SwiftShader" or similar means
+   * WebGL is being emulated on the CPU (hardware acceleration off or the driver
+   * blocklisted): it works, but every pixel of the shader runs on the CPU.
+   */
+  renderer = "unknown";
   private loc: Record<string, WebGLUniformLocation | null> = {};
+  private tex: { balls: WebGLTexture; tiles: WebGLTexture; list: WebGLTexture } | null = null;
   private balls = new Float32Array(MAX_BALLS * 4);
+  /** Frames left to check for GL errors; getError stalls the pipeline, so only at first. */
+  private errorChecks = 3;
 
   constructor() {
     this.gl = this.canvas.getContext("webgl2", {
@@ -530,6 +560,8 @@ class GpuTerritory {
   }
 
   private init(gl: WebGL2RenderingContext): void {
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    this.renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
     const compile = (type: number, src: string) => {
       const s = gl.createShader(type)!;
       gl.shaderSource(s, src);
@@ -552,18 +584,28 @@ class GpuTerritory {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       const log = (gl.getProgramInfoLog(prog) ?? "").trim();
       console.warn("territory program:", log);
-      // The usual cause is the uniform budget: uBalls is MAX_BALLS vec4s and the
-      // guaranteed minimum for MAX_FRAGMENT_UNIFORM_VECTORS is only 224, so a
-      // driver at spec minimum cannot link this program at all.
-      const budget = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS);
-      this.failure = `shader did not link (uniform budget ${budget}, needs ${MAX_BALLS + MAX_LAYERS}): ${log.slice(0, 90)}`;
+      this.failure = `shader did not link: ${log.slice(0, 120)}`;
       return;
     }
     this.prog = prog;
     gl.useProgram(prog);
-    for (const name of ["uBalls", "uColors", "uCount", "uTime", "uBorderPx"]) {
+    for (const name of ["uBalls", "uTiles", "uList", "uColors", "uTime", "uBorderPx"]) {
       this.loc[name] = gl.getUniformLocation(prog, name);
     }
+    // Data textures, only ever read with texelFetch: no filtering, no mipmaps.
+    const dataTexture = (unit: number, sampler: string): WebGLTexture => {
+      const t = gl.createTexture()!;
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(this.loc[sampler], unit);
+      return t;
+    };
+    this.tex = { balls: dataTexture(0, "uBalls"), tiles: dataTexture(1, "uTiles"), list: dataTexture(2, "uList") };
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     // Fullscreen triangle.
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -582,7 +624,7 @@ class GpuTerritory {
     scaleOf: (id: number) => number,
   ): boolean {
     const gl = this.gl;
-    if (!gl || !this.prog) return false;
+    if (!gl || !this.prog || !this.tex) return false;
 
     const dpr = window.devicePixelRatio || 1;
     const scale = dpr * RES_SCALE;
@@ -598,20 +640,90 @@ class GpuTerritory {
     const balls = collectBalls(world, camera, scale, w, h, shown, layerOf, scaleOf);
     // .w packs layer and the node's stable wobble seed: layer * 1000 + seed.
     balls.forEach((b, i) => this.balls.set([b.x, h - b.y, b.r, b.layer * 1000 + b.seed], i * 4));
-    const count = balls.length;
+    const texels = Math.max(1, balls.length); // a texture needs at least one texel
+    const { tiles, tilesX, tilesY, list } = binBalls(this.balls, balls.length, w, h);
+    const listRows = Math.max(1, Math.ceil(list.length / LIST_W));
+    const listData = new Int32Array(LIST_W * listRows);
+    listData.set(list);
+
+    gl.useProgram(this.prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.balls);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, texels, 1, 0, gl.RGBA, gl.FLOAT, this.balls.subarray(0, texels * 4));
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.tiles);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32I, tilesX, tilesY, 0, gl.RG_INTEGER, gl.INT, tiles);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.list);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, LIST_W, listRows, 0, gl.RED_INTEGER, gl.INT, listData);
 
     gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.prog);
-    gl.uniform4fv(this.loc.uBalls, this.balls);
     gl.uniform4fv(this.loc.uColors, layerColors(world, layerOf));
-    gl.uniform1i(this.loc.uCount, count);
     gl.uniform1f(this.loc.uTime, timeMs / 1000);
     gl.uniform1f(this.loc.uBorderPx, BORDER_PX * scale);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // A driver that rejects a texture format or the draw would otherwise leave the
+    // territory blank; give up on the GPU path and let the CPU fallback draw it.
+    if (this.errorChecks > 0) {
+      this.errorChecks--;
+      const err = gl.getError();
+      if (err !== gl.NO_ERROR) {
+        this.failure = `GL error 0x${err.toString(16)} while drawing`;
+        this.prog = null;
+        return false;
+      }
+    }
     return true;
   }
+}
+
+/**
+ * Lists, for each TILE_PX tile of a w x h buffer, the balls whose reach (with
+ * wobble headroom) overlaps it. `balls` packs x, y (y-up), r, w per ball.
+ * Returns a (first, count) pair per tile into one flat list of ball indices.
+ */
+function binBalls(
+  balls: Float32Array,
+  n: number,
+  w: number,
+  h: number,
+): { tiles: Int32Array; tilesX: number; tilesY: number; list: Int32Array } {
+  const tilesX = Math.ceil(w / TILE_PX);
+  const tilesY = Math.ceil(h / TILE_PX);
+  const counts = new Int32Array(tilesX * tilesY);
+  const spans = new Int32Array(n * 4); // per ball: first/last tile column, first/last tile row
+  for (let i = 0; i < n; i++) {
+    const x = balls[i * 4];
+    const y = balls[i * 4 + 1];
+    const reach = balls[i * 4 + 2] * REACH * 1.08 + 1;
+    const x0 = Math.max(0, Math.floor((x - reach) / TILE_PX));
+    const x1 = Math.min(tilesX - 1, Math.floor((x + reach) / TILE_PX));
+    const y0 = Math.max(0, Math.floor((y - reach) / TILE_PX));
+    const y1 = Math.min(tilesY - 1, Math.floor((y + reach) / TILE_PX));
+    spans.set([x0, x1, y0, y1], i * 4);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) counts[ty * tilesX + tx]++;
+  }
+  const tiles = new Int32Array(tilesX * tilesY * 2);
+  let total = 0;
+  for (let t = 0; t < counts.length; t++) {
+    tiles[t * 2] = total;
+    tiles[t * 2 + 1] = counts[t];
+    total += counts[t];
+  }
+  const list = new Int32Array(Math.max(1, total));
+  const filled = new Int32Array(counts.length);
+  for (let i = 0; i < n; i++) {
+    const x0 = spans[i * 4], x1 = spans[i * 4 + 1], y0 = spans[i * 4 + 2], y1 = spans[i * 4 + 3];
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const t = ty * tilesX + tx;
+        list[tiles[t * 2] + filled[t]++] = i;
+      }
+    }
+  }
+  return { tiles, tilesX, tilesY, list };
 }
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);

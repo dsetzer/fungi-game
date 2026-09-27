@@ -30,10 +30,27 @@ npm test           # 49 sim, server, camera and geometry specs (vitest)
 npm run build      # typecheck + production build into dist/
 ```
 
+The client opens on a menu: a name, and an optional server. **Leave the server empty to play solo
+against bots.** Locally it's pre-filled with `localhost:8787`, so Play joins your local server. If
+that server isn't running, the client plays solo meanwhile and keeps retrying, switching to
+multiplayer the moment the server answers.
+
 Open http://localhost:5173 in two tabs to play against yourself — add `?name=Armillaria` so the
-tabs don't share a stored name. **With no server running the client plays solo against bots** and
-keeps retrying, switching to multiplayer the moment the server answers. After `npm run build` the
-server also hosts the client itself on port 8787.
+tabs don't share a stored name. After `npm run build` the server also hosts the client itself on
+port 8787.
+
+### Hosting
+
+Every push to `main` publishes the client to GitHub Pages (`.github/workflows/pages.yml`), where
+it plays solo unless a visitor enters a server. A page served over https can only reach **wss**
+servers, so a server meant to be joined from there needs a certificate browsers trust for its
+hostname. Two ways:
+
+- **Serve wss directly:** set `TLS_CERT` and `TLS_KEY` to the paths of a PEM certificate and key
+  (e.g. from Let's Encrypt for a domain pointing at the machine), and the server speaks https/wss
+  on the same port. A self-signed certificate won't be accepted by browsers.
+- **Use a tunnel** (Cloudflare Tunnel, ngrok): run the server as normal and let the tunnel provide
+  the https address. Players enter it in full, e.g. `wss://example.trycloudflare.com`.
 
 ## Controls
 

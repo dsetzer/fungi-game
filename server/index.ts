@@ -1,5 +1,6 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createSecureServer } from "node:https";
 import { extname, join, normalize } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import { SERVER_PORT, SIM_HZ, SNAPSHOT_HZ, TICK_MS } from "../src/config";
@@ -15,7 +16,7 @@ const TYPES: Record<string, string> = {
   ".json": "application/json", ".webp": "image/webp", ".png": "image/png",
 };
 
-const http = createServer((req: IncomingMessage, res: ServerResponse) => {
+function serveClient(req: IncomingMessage, res: ServerResponse): void {
   const url = (req.url ?? "/").split("?")[0];
   const rel = normalize(url === "/" ? "index.html" : url.slice(1)).replace(/^(\.\.[/\\])+/, "");
   const file = join(DIST, rel);
@@ -25,7 +26,19 @@ const http = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
   res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
-});
+}
+
+/**
+ * Set TLS_CERT and TLS_KEY (paths to a PEM certificate and key) to serve https and
+ * wss instead of http and ws. A page served over https — GitHub Pages — can only
+ * open wss connections, and the certificate must be one browsers trust for this
+ * server's hostname (e.g. Let's Encrypt); a self-signed one won't be accepted.
+ */
+const tls =
+  process.env.TLS_CERT && process.env.TLS_KEY
+    ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY) }
+    : null;
+const http = tls ? createSecureServer(tls, serveClient) : createServer(serveClient);
 
 const wss = new WebSocketServer({ server: http });
 
@@ -90,5 +103,6 @@ setInterval(() => {
 }, TICK_MS / 2);
 
 http.listen(SERVER_PORT, () => {
-  console.log(`fungi server on http://localhost:${SERVER_PORT} (ws on the same port)`);
+  const [web, socket] = tls ? ["https", "wss"] : ["http", "ws"];
+  console.log(`fungi server on ${web}://localhost:${SERVER_PORT} (${socket} on the same port)`);
 });

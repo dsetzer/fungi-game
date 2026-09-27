@@ -29,10 +29,10 @@ const THRESHOLD = (1 - 1 / (REACH * REACH)) ** 2;
  */
 const EDGE_AA_PX = 1;
 /** Border band drawn just inside the contour, in CSS pixels. */
-const BORDER_PX = 2.5;
+const BORDER_PX = 2;
 /** The border is the fill colour darkened, which keeps the flat palette. */
-const BORDER_DARKEN = 0.58;
-const BORDER_ALPHA = 0.95;
+const BORDER_DARKEN = 0.8;
+const BORDER_ALPHA = 0.85;
 
 const VERT = `#version 300 es
 in vec2 aPos;

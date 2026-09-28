@@ -32,7 +32,7 @@ export class NetClient {
   private socket: WebSocket | null = null;
   private retry = 0;
 
-  constructor(private url: string, private name: string) {}
+  constructor(private url: string, private name: string, private spectate = false) {}
 
   /** Connects, and keeps trying: servers restart, laptops sleep, wifi drops. */
   connect(): void {
@@ -56,7 +56,7 @@ export class NetClient {
     }
     this.socket.onopen = () => {
       this.retry = 0;
-      this.send({ t: "hello", name: this.name, version: 1 });
+      this.send({ t: "hello", name: this.name, version: 1, spectate: this.spectate });
     };
     this.socket.onerror = dropped;
     this.socket.onclose = dropped;

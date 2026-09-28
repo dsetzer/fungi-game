@@ -144,6 +144,21 @@ body {
   text-align: center;
 }
 
+#menu .menu-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+#menu .menu-buttons button {
+  flex: 1;
+}
+
+#menu button.secondary {
+  background: #fff;
+  color: #2f9e44;
+  box-shadow: inset 0 0 0 1px #2f9e44;
+}
+
 #menu button {
   font: inherit;
   font-size: 15px;

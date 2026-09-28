@@ -105,3 +105,41 @@ describe("server room", () => {
     expect(spawned).toHaveLength(1); // B gained nothing from A's forged command
   });
 });
+
+describe("spectators", () => {
+  function spectator(room: Room) {
+    const m = { ...member("Watcher"), spectator: true };
+    m.send = (msg: unknown) => m.inbox.push(msg);
+    room.members.add(m);
+    return m;
+  }
+
+  it("see the whole arena, fog-free", () => {
+    const room = new Room();
+    joinRoom(room, "A");
+    const snap = room.snapshotFor(null);
+    expect(snap.nodes).toHaveLength(room.world.nodes.size);
+    expect(snap.pipes).toHaveLength(room.world.pipes.size);
+  });
+
+  it("get no colony, not even when a new round starts, and don't count as players", () => {
+    const room = new Room();
+    joinRoom(room, "A");
+    const w = spectator(room);
+    room.startRound();
+    expect(w.player).toBeNull();
+    const owners = new Set([...room.world.nodes.values()].map((n) => n.owner));
+    expect(owners.has(null)).toBe(true); // falls
+    expect(room.playerCount).toBe(1);
+    expect(room.snapshotFor(null).online).toBe(1);
+  });
+
+  it("can't issue commands", () => {
+    const room = new Room();
+    const w = spectator(room);
+    const before = room.world.nodes.size;
+    room.command(w, { type: "eject", player: 1, from: 1, x: 0, y: 0 });
+    room.step();
+    expect(room.world.nodes.size).toBeLessThanOrEqual(before);
+  });
+});

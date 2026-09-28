@@ -34,6 +34,8 @@ export class Renderer {
   /** Recreated when the round does, so a new arena starts fully fogged. */
   private fog: { arena: World["arena"]; fog: FogOfWar } | null = null;
   private growth = new GrowthTracker();
+  /** Spectating: the whole arena is visible — no fog, nothing hidden. */
+  spectate = false;
   /**
    * How far the hypha chevrons have crawled, in screen pixels within one gap.
    * Advanced per frame, never by more than a bit under half a gap: at a low frame
@@ -73,9 +75,12 @@ export class Renderer {
     // rival's only while one of your colonies can see it.
     if (this.fog?.arena !== world.arena) this.fog = { arena: world.arena, fog: new FogOfWar(world.arena.radius) };
     const fog = this.fog.fog;
-    fog.update(world, player);
-    const seen = fog.visibleNodes(world, player);
-    const shown = (id: number) => seen.has(id);
+    let shown: (id: number) => boolean = () => true;
+    if (!this.spectate) {
+      fog.update(world, player);
+      const seen = fog.visibleNodes(world, player);
+      shown = (id: number) => seen.has(id);
+    }
     this.growth.update(world, timeMs);
     const sinceLast = this.lastDrawMs ? timeMs - this.lastDrawMs : 0;
     this.lastDrawMs = timeMs;
@@ -88,7 +93,7 @@ export class Renderer {
     this.drawTerrain(world);
     const tTerrain = performance.now();
     for (const b of world.barriers.values()) {
-      if (b.owner !== player && !fog.isVisible(b.x, b.y)) continue;
+      if (b.owner !== player && !this.spectate && !fog.isVisible(b.x, b.y)) continue;
       const color = world.player(b.owner)?.color ?? "#888";
       const anchor = world.nodes.get(b.anchor)!;
       this.drawWall(anchor, b, b.a, b.b, color, b.id === input.hoverWall ? 1 : 0.8);
@@ -108,7 +113,7 @@ export class Renderer {
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
     const tEntities = performance.now();
-    fog.draw(ctx, camera, COLORS.fog);
+    if (!this.spectate) fog.draw(ctx, camera, COLORS.fog);
     const tEnd = performance.now();
 
     const p = this.perf;

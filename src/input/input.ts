@@ -136,11 +136,16 @@ export class Input {
     return null;
   }
 
+  /** Spectating: panning and zooming only — no throws, hyphae, walls or cuts. */
+  readOnly = false;
+
   private onDown = (e: PointerEvent) => {
     this.canvas.setPointerCapture(e.pointerId);
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);
-    const node = this.nodeAt(this.cursor);
-    if (e.button === 0) {
+    const node = this.readOnly ? undefined : this.nodeAt(this.cursor);
+    if (e.button === 0 && this.readOnly) {
+      return;
+    } else if (e.button === 0) {
       this.leftPress = { sx: e.offsetX, sy: e.offsetY };
       if (node) this.drag = { from: node.id };
     } else if (e.button === 2) {
@@ -183,7 +188,7 @@ export class Input {
       }
       this.drag = null;
       this.leftPress = null;
-    } else if (e.button === 0 && this.leftPress) {
+    } else if (e.button === 0 && this.leftPress && !this.readOnly) {
       // A left-click that isn't a drag: clicking a hypha flips which way it flows.
       const moved = Math.hypot(e.offsetX - this.leftPress.sx, e.offsetY - this.leftPress.sy);
       const pipe = moved <= CLICK_SLOP ? this.pipeAt(this.cursor) : null;
@@ -193,7 +198,7 @@ export class Input {
       const r = this.right;
       if (r.moved && r.wallFrom != null) {
         this.send({ type: "wall", player, from: r.wallFrom, ...this.cursor });
-      } else if (!r.moved) {
+      } else if (!r.moved && !this.readOnly) {
         const wall = this.wallAt(this.cursor);
         const pipe = wall == null ? this.pipeAt(this.cursor) : null;
         if (wall != null) this.send({ type: "demolish", player, wall });

@@ -77,10 +77,12 @@ export class World {
   }
 
   /** A full round: generated arena, spawned players, scattered nutrient falls. */
-  static createMatch(seed: number, playerCount = PLAYER_COUNT): World {
+  /** A solo match. With `allBots`, every seat is a bot — something to spectate. */
+  static createMatch(seed: number, playerCount = PLAYER_COUNT, allBots = false): World {
     const world = new World(generateArena(seed, playerCount), seed);
     world.arena.spawns.forEach((s, i) => {
-      const player = world.addPlayer(i === 0 ? "You" : `Bot ${i}`, i !== 0);
+      const human = i === 0 && !allBots;
+      const player = world.addPlayer(human ? "You" : `Bot ${i + (allBots ? 1 : 0)}`, !human);
       world.addColony(player.id, s.x, s.y, START_NUTRIENTS);
     });
     // Every spawn gets a cluster next to it: small outer blobs within starting

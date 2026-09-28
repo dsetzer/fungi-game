@@ -31,6 +31,10 @@ let centredOn: unknown = null;
 
 /** Null until the player picks a server on the menu; solo play never makes one. */
 let net: NetClient | null = null;
+/** Watching the whole arena rather than playing: no fog, no commands. */
+let spectating = false;
+/** Nobody's id: what a spectator is, for everything that asks "whose is this?". */
+const SPECTATOR: PlayerId = 0;
 
 // The menu: a name, and optionally a server. Empty server = solo against bots, so
 // a build hosted without a game server (GitHub Pages) still plays.
@@ -44,12 +48,16 @@ menu.addEventListener("submit", (e) => {
   localStorage.setItem("fungi.name", name);
   localStorage.setItem("fungi.server", server);
   menu.hidden = true;
+  // Spectate: with no server, watch a local all-bot match; with one, watch it live.
+  spectating = (e as SubmitEvent).submitter?.id === "menu-spectate";
+  renderer.spectate = spectating;
+  input.readOnly = spectating;
   if (server) connectTo(server, name);
   else startSolo();
 });
 
 function connectTo(server: string, name: string): void {
-  net = new NetClient(serverUrl(server), name);
+  net = new NetClient(serverUrl(server), name, spectating);
   net.onOffline = () => startSolo();
   net.onOnline = () => {
     solo = null; // the server is authoritative again
@@ -67,8 +75,9 @@ function connectTo(server: string, name: string): void {
 
 const placeholder = new World(emptyArena(1000));
 const currentWorld = () => net?.world ?? solo ?? placeholder;
-const currentPlayer = () => (net?.world ? net.you : SOLO_PLAYER);
+const currentPlayer = () => (spectating ? SPECTATOR : net?.world ? net.you : SOLO_PLAYER);
 const sendCommand = (cmd: Command) => {
+  if (spectating) return;
   if (net?.world) net.enqueue(cmd);
   else solo?.enqueue(cmd);
 };
@@ -116,14 +125,14 @@ function pickName(): string {
 
 function startSolo(): void {
   if (solo) return;
-  solo = World.createMatch((Math.random() * 2 ** 31) | 0);
+  solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
   centredOn = null;
 }
 
 function restartSolo(): void {
   clearTimeout(soloRestart);
   soloRestart = undefined;
-  solo = World.createMatch((Math.random() * 2 ** 31) | 0);
+  solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
   centredOn = null;
   banner.hidden = true;
 }
@@ -136,10 +145,21 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("resize", () => renderer.resize());
 renderer.resize();
 
-/** Snap the camera to your colony when a round (or the connection) begins. */
+/**
+ * Snap the camera to your colony when a round (or the connection) begins; a
+ * spectator gets the whole arena fitted to the screen instead.
+ */
 function centreOnHome(): void {
   const world = currentWorld();
   if (centredOn === world.arena) return;
+  if (spectating) {
+    if (world === placeholder) return;
+    const fit = Math.min(camera.width, camera.height) / (world.arena.radius * 2 * 1.05);
+    camera.snapTo(0, 0);
+    camera.zoom = Math.max(0.045, fit);
+    centredOn = world.arena;
+    return;
+  }
   const home = [...world.nodes.values()].find((n) => n.owner === currentPlayer());
   if (!home) return;
   // A new round is a new map: jump rather than fly across the whole arena.
@@ -165,18 +185,21 @@ function updateHud(): void {
     rows.push(`<tr class="you"><td>${myRank + 1}.</td><td><i style="background:${p.color}"></i>${escape(p.name)}</td><td>${Math.round(p.score).toLocaleString()}</td></tr>`);
   }
 
+  const watching = spectating ? "spectating · " : "";
   const mode = net?.connected
-    ? `${net.online} online · round ${formatTime(net.endsIn)}`
+    ? `${watching}${net.online} online · round ${formatTime(net.endsIn)}`
     : solo
       ? net
         ? "offline · solo with bots (retrying server)"
-        : "solo with bots"
+        : spectating
+          ? "spectating · bots only (R = new match)"
+          : "solo with bots"
       : net
         ? "connecting…"
         : "";
   hud.innerHTML =
     `<table>${rows.join("")}</table>` +
-    `<div class="stats">Colonies: <b>${mine.length}</b> · Nutrients: <b>${total}</b></div>` +
+    (spectating ? "" : `<div class="stats">Colonies: <b>${mine.length}</b> · Nutrients: <b>${total}</b></div>`) +
     `<div class="mode">${mode}</div>`;
 
   if (net?.status === "intermission") {
@@ -184,7 +207,11 @@ function updateHud(): void {
     banner.hidden = false;
   } else if (solo && solo.ended && soloRestart === undefined) {
     const won = solo.winner === SOLO_PLAYER;
-    banner.innerHTML = `${won ? "Your network prevails" : "Your network withered"}<small>New substrate in a moment… (or press R)</small>`;
+    const winner = solo.winner == null ? null : solo.player(solo.winner);
+    const headline = spectating
+      ? winner ? `${escape(winner.name)} prevails` : "Every network withered"
+      : won ? "Your network prevails" : "Your network withered";
+    banner.innerHTML = `${headline}<small>New substrate in a moment… (or press R)</small>`;
     banner.hidden = false;
     soloRestart = window.setTimeout(restartSolo, ROUND_RESTART_DELAY_MS);
   } else if (!solo?.ended) {

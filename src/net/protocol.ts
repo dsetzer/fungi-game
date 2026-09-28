@@ -75,13 +75,15 @@ export interface Snapshot {
 }
 
 export type ServerMsg =
+  /** `you` is 0 for a spectator: no player has that id. */
   | { t: "welcome"; version: number; you: PlayerId; round: RoundInfo; players: PlayerDTO[] }
   | { t: "round"; round: RoundInfo; players: PlayerDTO[]; winner: PlayerDTO | null }
   | Snapshot
   | { t: "error"; message: string };
 
 export type ClientMsg =
-  | { t: "hello"; name: string; version: number }
+  /** spectate: watch the whole arena without a colony; commands are ignored. */
+  | { t: "hello"; name: string; version: number; spectate?: boolean }
   | { t: "cmd"; cmd: Command };
 
 export function encode(msg: ServerMsg | ClientMsg): string {

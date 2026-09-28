@@ -53,18 +53,19 @@ wss.on("connection", (socket: WebSocket) => {
       member = {
         name: (msg.name || "Anon").slice(0, 16),
         player: null,
+        spectator: msg.spectate === true,
         send: (m) => socket.readyState === socket.OPEN && socket.send(encode(m as never)),
       };
       room.members.add(member);
-      room.join(member);
+      if (!member.spectator) room.join(member);
       member.send({
         t: "welcome",
         version: PROTOCOL_VERSION,
-        you: member.player,
+        you: member.player ?? 0,
         round: room.roundInfo(),
         players: room.playerDTOs(),
       });
-      console.log(`+ ${member.name} (${room.members.size} online)`);
+      console.log(`+ ${member.name}${member.spectator ? " (spectating)" : ""} (${room.members.size} connected)`);
       return;
     }
     if (msg.t === "cmd" && member) room.command(member, msg.cmd);
@@ -72,7 +73,7 @@ wss.on("connection", (socket: WebSocket) => {
 
   const drop = () => {
     if (!member) return;
-    console.log(`- ${member.name} (${room.members.size - 1} online)`);
+    console.log(`- ${member.name} (${room.members.size - 1} connected)`);
     room.leave(member);
     member = null;
   };
@@ -98,7 +99,8 @@ setInterval(() => {
   if (lag > TICK_MS * 5) lag = 0;
   if (steps === 0 || room.world.tick % every !== 0) return;
   for (const m of room.members) {
-    if (m.player != null) m.send(room.snapshotFor(m.player));
+    if (m.spectator) m.send(room.snapshotFor(null));
+    else if (m.player != null) m.send(room.snapshotFor(m.player));
   }
 }, TICK_MS / 2);
 

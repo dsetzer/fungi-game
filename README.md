@@ -35,6 +35,10 @@ against bots.** Locally it's pre-filled with `localhost:8787`, so Play joins you
 that server isn't running, the client plays solo meanwhile and keeps retrying, switching to
 multiplayer the moment the server answers.
 
+**Spectate** (next to Play on the menu) watches the whole arena, fog-free, without playing: a local
+all-bot match when the server field is empty, or a live server's game when it isn't. Spectators get no
+colony, can't issue commands, and don't count toward the arena size.
+
 Open http://localhost:5173 in two tabs to play against yourself — add `?name=Armillaria` so the
 tabs don't share a stored name. After `npm run build` the server also hosts the client itself on
 port 8787.

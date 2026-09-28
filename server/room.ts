@@ -24,8 +24,10 @@ const MIN_ARENA_PLAYERS = 4;
 
 export interface Member {
   name: string;
-  /** Sim player id, reassigned each round. */
+  /** Sim player id, reassigned each round. Always null for a spectator. */
   player: PlayerId | null;
+  /** Watches the whole arena, fog-free, without playing. */
+  spectator?: boolean;
   send(msg: unknown): void;
 }
 
@@ -47,6 +49,13 @@ export class Room {
     this.startRound();
   }
 
+  /** Members who are playing, not spectating. */
+  get playerCount(): number {
+    let n = 0;
+    for (const m of this.members) if (!m.spectator) n++;
+    return n;
+  }
+
   get radius(): number {
     return this.world.arena.radius;
   }
@@ -63,7 +72,8 @@ export class Room {
 
   startRound(winner: Player | null = null): void {
     this.seed = (Math.random() * 2 ** 31) | 0;
-    this.arenaPlayers = Math.max(MIN_ARENA_PLAYERS, this.members.size);
+    // Size the arena for the people playing in it; spectators take up no room.
+    this.arenaPlayers = Math.max(MIN_ARENA_PLAYERS, this.playerCount);
     const radius = radiusForPlayers(this.arenaPlayers);
     this.world = new World(generateArena(this.seed, this.arenaPlayers, radius), this.seed);
     this.world.endOnLastStanding = false;
@@ -73,7 +83,7 @@ export class Room {
     // Everyone still connected gets a fresh colony in the new arena.
     for (const m of this.members) {
       m.player = null;
-      this.join(m);
+      if (!m.spectator) this.join(m);
     }
     const info = this.roundInfo();
     const players = this.playerDTOs();
@@ -147,9 +157,9 @@ export class Room {
     return this.world.players.filter((p) => p.alive || p.score > 0).map(toPlayerDTO);
   }
 
-  /** What one player is allowed to see this tick. */
-  snapshotFor(player: PlayerId): Snapshot {
-    const seen = visibleNodes(this.world, player);
+  /** What one player is allowed to see this tick; null = a spectator, who sees everything. */
+  snapshotFor(player: PlayerId | null): Snapshot {
+    const seen = player == null ? new Set(this.world.nodes.keys()) : visibleNodes(this.world, player);
     const nodes: NodeDTO[] = [];
     for (const id of seen) {
       const n = this.world.nodes.get(id);
@@ -183,7 +193,7 @@ export class Room {
       t: "snap",
       tick: this.world.tick,
       endsIn: this.ticksLeft / SIM_HZ,
-      online: this.members.size,
+      online: this.playerCount,
       nodes,
       pipes,
       barriers,

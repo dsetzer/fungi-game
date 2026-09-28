@@ -562,6 +562,13 @@ class GpuTerritory {
   private init(gl: WebGL2RenderingContext): void {
     const info = gl.getExtension("WEBGL_debug_renderer_info");
     this.renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    // Software WebGL runs every pixel of the shader on the CPU, far slower than the
+    // CPU fallback, which is written for the CPU: on Windows' Basic Render Driver a
+    // spread-out network took ~300ms a frame and maxed the CPU. Use the fallback.
+    if (/basic render|swiftshader|llvmpipe|softpipe|software/i.test(this.renderer)) {
+      this.failure = `software WebGL (${this.renderer.slice(0, 40)})`;
+      return;
+    }
     const compile = (type: number, src: string) => {
       const s = gl.createShader(type)!;
       gl.shaderSource(s, src);

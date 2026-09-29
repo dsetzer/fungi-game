@@ -4,12 +4,12 @@ Real-time multiplayer .io game about growing a mycelial network — plant coloni
 together with hyphae, and drain nutrients out of wild falls, out of rivals, or straight out of an
 opponent's network while they try to do the same to you.
 
-Reconstructed from memory of an older browser game, with the mechanics and the reference
-screenshots written up in [design-document.md](design-document.md).
+Modelled on an older browser game. The mechanics and the reference screenshots are written up in
+[design-document.md](design-document.md).
 
 ## How it plays
 
-You start as one colony with a fixed pool of nutrients. Nutrients only enter your network by
+You start as one colony with a small pool of nutrients. Nutrients only enter your network by
 draining a **nutrient fall** or someone else's colony, and a colony that isn't being fed bleeds
 upkeep until it withers. Everything is one gesture: **drag from a colony**. Drag to empty ground
 and you throw a new colony there, carrying a share of the parent; drag onto another node and you
@@ -17,8 +17,8 @@ grow a hypha, which flows from where the drag started to where it ended — so d
 rival's colony is how you steal from it.
 
 Terrain blocks hyphae as well as movement, so the cave walls decide who can reach whom, and walls
-you build yourself can cut an attacker's line. The round runs on a timer and the biggest gatherer
-wins.
+you build yourself can cut an attacker's line. Hyphae never cross each other either, so every line
+is also a barrier. The round runs on a timer and the biggest gatherer wins.
 
 ## Run
 
@@ -26,18 +26,19 @@ wins.
 npm install
 npm run server     # authoritative game server on http://localhost:8787
 npm run dev        # client dev server on http://localhost:5173
-npm test           # 49 sim, server, camera and geometry specs (vitest)
+npm test           # sim, server, camera and bot specs (vitest)
 npm run build      # typecheck + production build into dist/
 ```
 
-The client opens on a menu: a name, and an optional server. **Leave the server empty to play solo
-against bots.** Locally it's pre-filled with `localhost:8787`, so Play joins your local server. If
-that server isn't running, the client plays solo meanwhile and keeps retrying, switching to
-multiplayer the moment the server answers.
+The client opens on a menu: a name, a bot difficulty (Easy / Normal / Hard) and an optional server.
+**Leave the server empty to play solo against bots.** On the dev server it's pre-filled with
+`localhost:8787`, so Play joins your local server; if that server isn't running, the client plays
+solo meanwhile and keeps retrying, switching to multiplayer the moment the server answers. When the
+page is served by the game server itself, the field defaults to that server.
 
 **Spectate** (next to Play on the menu) watches the whole arena, fog-free, without playing: a local
-all-bot match when the server field is empty, or a live server's game when it isn't. Spectators get no
-colony, can't issue commands, and don't count toward the arena size.
+all-bot match when the server field is empty, or a live server's game when it isn't. Spectators get
+no colony, can't issue commands, and don't count toward the arena size.
 
 Open http://localhost:5173 in two tabs to play against yourself — add `?name=Armillaria` so the
 tabs don't share a stored name. After `npm run build` the server also hosts the client itself on
@@ -48,12 +49,10 @@ port 8787.
 **The real game is the server.** Like any .io game, players visit the game server's own web
 address: after `npm run build` it serves the client and the game connection from the same place.
 
-**GitHub Pages is a demo.** Every push to `main` publishes the client there
-(`.github/workflows/pages.yml`), where it plays solo against bots. A visitor can also enter a
-server to join, but a page served over https can only reach servers using **wss** — so a remote
-server joined from Pages must serve wss (below). Otherwise, visit the server's own address or run
-the client locally. A server serves wss with a certificate browsers trust for its hostname. Two
-ways:
+**GitHub Pages is a demo.** Every push to `main` runs the tests and publishes the client there
+(`.github/workflows/pages.yml`), where it plays solo against bots. Pages is static, so it can't host
+the Node server. A visitor can enter a server to join, but a page served over https can only reach
+servers using **wss**, so a remote server joined from Pages must serve wss. Two ways:
 
 - **Serve wss directly:** set `TLS_CERT` and `TLS_KEY` to the paths of a PEM certificate and key
   (e.g. from Let's Encrypt for a domain pointing at the machine), and the server speaks https/wss
@@ -66,15 +65,15 @@ ways:
 | Input | Action |
 |---|---|
 | Left-drag from a node → empty space | Throw a new colony, auto-connected by a hypha from its parent |
-| Wheel **while dragging** | Share of the parent the new colony carries (15–90%, default 65%) — scroll up for long exploration runs |
+| Wheel **while dragging** | Share of the parent the new colony carries (15–90%, default 65%, 5% per notch) |
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (drag *from* a rival to drain them) |
 | Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
 | Right-drag from your colony | Build a wall (⊢): the crossbar blocks line of sight |
 | Right-click your wall / your hypha | Demolish it / cut it (only hyphae you grew) |
-| Right-drag empty space, or WASD | Pan |
+| Right-drag from anywhere else, or WASD | Pan |
 | Mouse wheel | Zoom |
-| R | New round (solo only) |
-| F | Render profiler: per-stage ms, and whether auras run on GPU or CPU |
+| R | New round (solo and spectated local matches only) |
+| F | Toggle the render profiler |
 
 ## Multiplayer
 
@@ -82,10 +81,15 @@ ways:
   receive snapshots; nothing is simulated client-side, and a forged player id is re-stamped.
 - **Fog of war is enforced server-side** — each player's snapshot contains only what they can see,
   so hidden state never reaches the browser.
-- **Terrain is never sent.** The client regenerates the identical arena from the round's seed.
-- **Rounds run 10 minutes.** Players join and respawn instantly, so the winner is whoever gathered
-  the most (score = nutrients drawn into your network from falls or rivals). The arena is then
-  regenerated at a size scaled to the player count.
+- **Terrain is never sent.** The client regenerates the identical arena from the round's seed,
+  player count and radius.
+- **Rounds run 10 minutes,** with a 12-second intermission. Players join and respawn instantly, so
+  the winner is whoever gathered the most (score = nutrients drawn into your network from falls or
+  rivals). The arena is regenerated each round at a size scaled to the number of players (spectators
+  excluded): radius 5400 for four players, growing with the square root of the count, between 2800
+  and 12000. The arena is fixed for the length of a round; someone who joins mid-round is dropped
+  into the existing map at the best free spot, with a fall cluster seeded beside them if there is
+  no food nearby.
 
 ## Layout
 
@@ -97,7 +101,7 @@ src/
     arena.ts         seeded cave generation + WallIndex for line-of-sight queries
     spawn.ts         where a joining or respawning player lands
     vision.ts        fog-of-war queries, used by the server to filter snapshots
-    bot.ts           placeholder AI; issues ordinary Commands, no special access
+    bot.ts           computer players; issue ordinary Commands, no special access
     match.ts         one authoritative tick (bots + world.step)
     geometry.ts      segment/circle maths, seeded RNG
     types.ts         entities + the Command union
@@ -105,18 +109,38 @@ src/
     territory.ts     metaball "fluid" auras (WebGL2 shader, CPU fallback)
     fog.ts           vision, remembered ground, the grey overlay
     terrain.ts       cached terrain image for zoomed-out frames
-    pipePath.ts      the hypha curve, shared by drawing and hit-testing
+    growth.ts        purely visual timing for new hyphae and colonies
     camera.ts        eased fly-to camera
   net/               protocol (shared with the server) + client connection
   input/             mouse/keyboard → Commands
-  main.ts            fixed-timestep loop, HUD, solo fallback
+  main.ts            menu, fixed-timestep loop, HUD, solo fallback
 server/              rounds, join/respawn, per-player snapshots
-tests/               vitest specs for the sim, the server room, camera and curves
+tests/               vitest specs for the sim, bots, the server room and the camera
+tools/mapgen/        experimental map-generator previews; not used by the game (see below)
 reference/           screenshots of the original game
 ```
 
 Every player action is a `Command` queued into the `World` and applied at the start of the next
 tick — the same path locally and over the network.
+
+### Map generator experiments
+
+`tools/mapgen/` holds standalone scripts that draw and test a proposed replacement for the arena
+generator. Nothing in `src/` uses them.
+
+```
+npx tsx tools/mapgen/preview.ts [seed ...]   # writes tools/mapgen/out/index.html
+npx tsx tools/mapgen/check.ts [seeds]        # connectivity, speed and fairness checks
+```
+
+## Computer players
+
+Bots play by the same rules as a person and issue ordinary Commands. Each step they, in order of
+urgency: defend colonies being drained, feed starving ones from richer siblings, tap every fall in
+reach, cut a cord when a colony is overspending, drain weaker rival colonies, and otherwise throw a
+new colony toward the best-scoring fall or weak rival. They are limited only by how fast they may
+act: each throw, new line or cut spends one action, and actions refill at the difficulty's rate
+(Easy 0.5/s, Normal 1.5/s, Hard 4/s). A bot stops throwing at 40 colonies.
 
 ## Decisions made for open design items
 
@@ -126,6 +150,8 @@ noted.
 - **Ejecting:** carries a share of the parent (default 65%, wheel-adjustable) rather than a flat
   amount, so a rich colony throws a child strong enough to throw again. Minimum throw 12, parent
   always keeps 5.
+- **Reach:** `220 + 20·√nutrients`, capped at 600 (`MAX_REACH`), so a colony never reaches across
+  the map however rich it gets. It governs throwing, connecting and building walls alike.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained — a colony with inflow that
   isn't sending out more than it receives pays nothing, so relays don't wither.
 - **Gathering:** three out of a fall arrive as four in the colony (`FALL_YIELD_PER_SEC`). Feed a
@@ -135,13 +161,14 @@ noted.
   income for the rest of the round. Colony-to-colony transfers are 1:1, so a ring of colonies with
   no fall in it generates nothing.
 - **Attacking:** a hypha draining a *rival* pulls far harder than one moving nutrients inside a
-  network — `attackRate` = 4 + 0.5·√nutrients of the attacking colony, capped at 30/s. Since one
-  fall only feeds 6/s, a single attacker already out-paces a victim's income, and a few colonies
-  on one target kill it. Still 1:1: the speed is the weapon, not a multiplier.
+  network — `attackRate` = 4 + 0.5·√nutrients of the attacking colony, capped at 30/s, against a flat
+  3/s for ordinary lines. Still 1:1: the speed is the weapon, not a multiplier.
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so
   funnelling and reinforcing always work. The cap counts only hyphae *you* grew, so a rival's
   drain line doesn't spend one of your slots — and a colony that has spent all four is still
-  attackable. Falls are uncapped.
+  attackable. Falls are uncapped. Only one hypha can join any pair of nodes.
+- **No crossing:** a new hypha, throw included, is refused if it would cross an existing one,
+  whoever grew it. Hyphae meeting at a shared node don't count.
 - **Reversing:** only the player who grew a hypha can flip it — being drained is answered by
   cutting, not by commandeering the attacker's hypha.
 - **Cutting:** only the player who grew a hypha can cut it, wherever its ends are. Being drained
@@ -157,19 +184,18 @@ noted.
 - **Line of sight:** checked when a hypha is grown, and blocked by terrain and crossbars alike.
 - **Fog of war:** colonies see 1.15× their reach (minimum 520). Explored ground stays remembered:
   terrain and falls persist, rivals only show while in sight.
-- **Map:** radius 5400, cave terrain regenerated per round, reach = 220 + 20·√nutrients.
+- **Map:** seeded cave terrain, regenerated each round: a grid of about nine thousand small wall
+  circles produced by cellular automata, with a nutrient-fall cluster beside every spawn and 70
+  more scattered around.
 - **Camera:** eases to a new colony when you throw one; any pan or zoom hands control straight
   back (`CAMERA_FLY_TAU_MS`, `CAMERA_FLY_ON_EJECT`).
 - **Falls pay upkeep:** no (`FALLS_PAY_UPKEEP`).
 
 ## Known gaps
 
-- **A client can end up with two connections.** On reconnect the old socket isn't closed, so the
-  server hands out a second player and two snapshot streams fight over one world — nutrients
-  appear to oscillate. Contained to `src/net/client.ts`.
 - **A closed loop of colonies never loses nutrients.** Each one receives exactly what it sends, so
   all count as sustained: a ring survives indefinitely with no income.
-- **Bots see the whole map** and only play solo rounds; online rounds have no AI opponents.
+- **Bots see the whole map** and only play local rounds; online rounds have no AI opponents.
+- **The arena doesn't grow mid-round.** It is sized once for the players present at round start;
+  late joiners share the map that was generated for fewer.
 - **The server is unauthenticated** and has no rate limiting — fine on a LAN, not for exposing.
-- **Not deployable to GitHub Pages as multiplayer.** Pages is static, so it can host the client
-  (which falls back to solo vs bots) but not the Node server.

@@ -1,7 +1,7 @@
 import { EJECT_MIN_AMOUNT, NODE_CORE_RADIUS, colonyAura } from "../config";
 import type { Input } from "../input/input";
 import type { Vec } from "../sim/geometry";
-import type { GameNode, Pipe } from "../sim/types";
+import type { BoostKind, GameNode, Pipe } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
 import { FogOfWar } from "./fog";
@@ -23,6 +23,9 @@ const COLORS = {
 };
 
 const DEATH_WARN_SECONDS = 20;
+export const BOOST_NAMES: Record<BoostKind, string> = {
+  branch: "Branch", reach: "Reach", vision: "Vision", flow: "Flow", scissors: "Scissors",
+};
 /** Hypha chevrons: gap between them, and how fast they crawl, in screen pixels. */
 const CHEVRON_GAP_PX = 10;
 const CHEVRON_SPEED_PX = 45;
@@ -101,7 +104,8 @@ export class Renderer {
     }
     for (const p of world.pipes.values()) {
       if (!shown(p.from) || !shown(p.to)) continue;
-      this.drawPipe(world, p, timeMs, p.id === input.hoverPipe);
+      const hovered = p.id === input.hoverPipe;
+      this.drawPipe(world, p, timeMs, hovered, hovered && input.armed === "scissors");
     }
     const hovered = input.nodeAt(input.cursor);
     // Hovering your own colony shows how far it can reach right now.
@@ -113,6 +117,7 @@ export class Renderer {
     }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
+    if (input.armed === "scissors") this.drawHint("Scissors: click any hypha to cut it", input.cursor);
     const tEntities = performance.now();
     if (!this.spectate) fog.draw(ctx, camera, COLORS.fog);
     const tEnd = performance.now();
@@ -212,13 +217,17 @@ export class Renderer {
     ctx.setLineDash([]);
   }
 
-  private drawReason(reason: string, at: Vec): void {
+  private drawReason(reason: string, at: Vec, color = COLORS.invalid): void {
     const { ctx } = this;
-    ctx.fillStyle = COLORS.invalid;
+    ctx.fillStyle = color;
     ctx.font = `${14 / this.camera.zoom}px system-ui, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(reason, at.x + 12 / this.camera.zoom, at.y - 8 / this.camera.zoom);
+  }
+
+  private drawHint(text: string, at: Vec): void {
+    this.drawReason(text, at, COLORS.warn);
   }
 
   private drawFloor(world: World): void {
@@ -265,11 +274,11 @@ export class Renderer {
    * one another (§6.2), so the player has to be able to read where each runs.
    * Sizes are in screen pixels so it reads the same at any zoom.
    */
-  private drawPipe(world: World, pipe: Pipe, timeMs: number, hovered: boolean): void {
+  private drawPipe(world: World, pipe: Pipe, timeMs: number, hovered: boolean, cutting = false): void {
     const { ctx } = this;
     const src = world.nodes.get(pipe.from)!;
     const dst = world.nodes.get(pipe.to)!;
-    const color = world.player(pipe.owner)?.color ?? "#888";
+    const color = cutting ? COLORS.invalid : (world.player(pipe.owner)?.color ?? "#888");
     const zoom = this.camera.zoom;
     const full = Math.hypot(dst.x - src.x, dst.y - src.y);
     if (full === 0) return;
@@ -280,7 +289,9 @@ export class Renderer {
     const dx = (dst.x - src.x) / full;
     const dy = (dst.y - src.y) / full;
 
-    const base = (hovered ? 9 : 7.5) / zoom; // half-length of a chevron at its fattest
+    // Half-length of a chevron at its fattest. Under Flow (§6.7) they swell, so a
+    // doubled network is visible at a glance — yours and a rival's alike.
+    const base = ((hovered ? 9 : 7.5) * (world.flowActive(pipe.owner) ? 1.4 : 1)) / zoom;
     const spacing = CHEVRON_GAP_PX / zoom;
     const offset = this.flowPx / zoom; // the flow, crawling along
     ctx.fillStyle = color;
@@ -307,7 +318,11 @@ export class Renderer {
     const formed = this.growth.formed(n.id, timeMs);
     if (formed <= 0) return;
     const r = world.radiusOf(n) * easeOutBack(formed) * (1 + 0.35 * this.growth.pulse(world, n.id, timeMs));
-    const color = n.kind === "fall" ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
+    const color = n.owner == null ? COLORS.fallCore : (world.player(n.owner)?.color ?? "#888");
+    if (n.kind === "boost") {
+      this.drawBoost(n, r, color, hovered);
+      return;
+    }
     // Your own colonies draw hollow while they're too poor to throw, so a colony
     // you can't expand from is obvious before you try to drag off it.
     const tooWeak =
@@ -331,6 +346,36 @@ export class Renderer {
       ctx.textBaseline = "middle";
       ctx.fillText(String(Math.floor(n.nutrients)), n.x + r + 6 / this.camera.zoom, n.y);
     }
+  }
+
+  /**
+   * A boost (§6.7) is a diamond rather than a dot, grey until captured and then
+   * in its holder's colour, with its name under it so it is worth the trip before
+   * you get there.
+   */
+  private drawBoost(n: GameNode, r: number, color: string, hovered: boolean): void {
+    const { ctx } = this;
+    const s = r * 1.8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(n.x, n.y - s);
+    ctx.lineTo(n.x + s, n.y);
+    ctx.lineTo(n.x, n.y + s);
+    ctx.lineTo(n.x - s, n.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    if (n.owner != null) this.drawDeathRing(n, s);
+    const zoom = this.camera.zoom;
+    const name = n.boost ? BOOST_NAMES[n.boost] : "Boost";
+    ctx.fillStyle = "#333";
+    ctx.font = `600 ${12 / zoom}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const label = hovered ? `${name} · ${Math.floor(n.nutrients)}` : name;
+    ctx.fillText(label, n.x, n.y + s + 5 / zoom);
   }
 
   /** Fluid areas (metaballs), rendered in screen space and composited here. */

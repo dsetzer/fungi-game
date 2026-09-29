@@ -1,4 +1,5 @@
 import {
+  BOOST_COUNT,
   INTERMISSION_SECONDS,
   ROUND_SECONDS,
   SIM_HZ,
@@ -77,6 +78,7 @@ export class Room {
     const radius = radiusForPlayers(this.arenaPlayers);
     this.world = new World(generateArena(this.seed, this.arenaPlayers, radius), this.seed);
     this.world.endOnLastStanding = false;
+    this.world.placeBoosts(BOOST_COUNT);
     this.ticksLeft = ROUND_SECONDS * SIM_HZ;
     this.intermission = false;
 
@@ -166,7 +168,8 @@ export class Room {
       if (!n) continue;
       nodes.push({
         i: n.id,
-        k: n.kind === "fall" ? 1 : 0,
+        k: n.kind === "fall" ? 1 : n.kind === "boost" ? 2 : 0,
+        ...(n.boost ? { b: n.boost } : {}),
         o: n.owner,
         x: Math.round(n.x),
         y: Math.round(n.y),
@@ -203,5 +206,9 @@ export class Room {
 }
 
 function toPlayerDTO(p: Player): PlayerDTO {
-  return { id: p.id, name: p.name, color: p.color, score: Math.round(p.score), alive: p.alive };
+  const a = p.abilities;
+  return {
+    id: p.id, name: p.name, color: p.color, score: Math.round(p.score), alive: p.alive,
+    fu: a.flowUntil, fr: a.flowReadyAt, sr: a.scissorsReadyAt,
+  };
 }

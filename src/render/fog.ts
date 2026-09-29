@@ -1,10 +1,4 @@
-import {
-  FOG_CELL,
-  FOG_EXPLORED_ALPHA,
-  FOG_RENDER_SCALE,
-  VISION_MIN,
-  VISION_REACH_SCALE,
-} from "../config";
+import { FOG_CELL, FOG_EXPLORED_ALPHA, FOG_RENDER_SCALE } from "../config";
 import type { EntityId, PlayerId } from "../sim/types";
 import type { World } from "../sim/world";
 import type { Camera } from "./camera";
@@ -53,7 +47,7 @@ export class FogOfWar {
     this.eyes = [];
     for (const n of world.nodes.values()) {
       if (n.owner !== player) continue;
-      const r = Math.max(VISION_MIN, world.reachOf(n) * VISION_REACH_SCALE);
+      const r = world.visionOf(n);
       this.eyes.push({ x: n.x, y: n.y, r });
       this.markExplored(n.x, n.y, r);
       this.remember(n.x, n.y, r);
@@ -112,8 +106,8 @@ export class FogOfWar {
   }
 
   /**
-   * Nodes to draw: your own always, rivals only while visible, falls once seen
-   * (they don't move, so remembering them is fair).
+   * Nodes to draw: your own always, rivals only while visible, falls and neutral
+   * boosts once seen (they don't move, so remembering them is fair).
    */
   visibleNodes(world: World, player: PlayerId): Set<EntityId> {
     const out = new Set<EntityId>();
@@ -121,7 +115,7 @@ export class FogOfWar {
       const seen =
         n.owner === player ||
         this.isVisible(n.x, n.y) ||
-        (n.kind === "fall" && this.isExplored(n.x, n.y));
+        (n.owner == null && this.isExplored(n.x, n.y));
       if (seen) out.add(n.id);
     }
     return out;

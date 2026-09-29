@@ -136,6 +136,7 @@ The game's objective loop is **explore, expand, feed, grow** — powerups are th
 
 A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral grey node with its own nutrient pool, drawn like a nutrient fall, and it is captured and held through exactly the same pipeline machinery as everything else — no new verbs, no menu.
 
+- **Draining:** a boost can be drained like a fall, neutral or captured, and yields like one. Draining is what depletes boosts, and draining one a rival is feeding is how you strip the boost from them.
 - **Capturing:** feed nutrients *into* it. It changes colour to yours and becomes an ordinary node of your network — yours in the same sense your colonies are, with the same upkeep, the same vulnerability to being drained, and the same rules about what it can connect to.
 - **Holding:** its ability is active while you hold it, paid for by keeping it fed. Because it is now a normal node, a rival takes it the same way they take anything else — drain it faster than its owner feeds it.
 - **Dying:** when its pool hits zero it is gone, exactly like any other node of yours that gets starved out.
@@ -147,7 +148,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 **A passive boost may only add options, never change what an existing network is already doing.** Extra range, extra outputs and a wider view leave a built network behaving exactly as before; the player chooses whether to use them, and losing the boost takes the option away without rebalancing anything. A boost that sped up every hypha fails this test: colonies set up for the normal rate would start bleeding, and losing it would rebalance the whole network under the player.
 
-**Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey; firing it arms a single action, and once that action is taken it goes on cooldown. It stays usable for as long as the boost is held.
+**Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey. Scissors arms a single cut and goes on cooldown once it's made; Flow takes effect at once and goes on cooldown when it ends. It stays usable for as long as the boost is held.
 
 ### The base list
 
@@ -156,10 +157,15 @@ The economics follow from that: holding a boost costs throughput every second, s
 | **Branch** | Passive | Every colony you own gets **double the output slots** (4 → 8). | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. Doubled rather than +1 because of the sustain engine: a loop nets a third of the pipe rate, so three loops feed exactly one output and a 3-loop + 1-output hub fills all four slots with no surplus or deficit. One extra slot is nearly useless there — a fourth loop only piles surplus in the hub, a second output starves it. Eight slots fit two full engines (six loops + two outputs) or anything else a player builds. |
 | **Reach** | Passive | Every colony's ejection and hypha reach increases. | Line of sight still applies, so enclaves and chokepoints are unaffected. The bonus is always on, so it should be well under the +100% considered for a one-shot version. |
 | **Vision** | Passive | A larger view radius for everything you own. | |
-| **Distribute** | Activated | Click one of your colonies: its nutrients leave as a pulse that travels down the chain, giving each colony it reaches an equal share. | See below. |
+| **Flow** | Activated | Every hypha you own carries double its rate for a while. | Not a passive boost, because a permanent speed-up would rebalance networks built for the normal rate. As a timed burst nothing breaks: each colony's hypha income and spend double together while upkeep stays flat, so balanced colonies stay balanced, surplus doubles, falls empty sooner but yield the same total, and your drain lines on rivals pull twice as hard — an attack window. |
 | **Scissors** | Activated | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Scissors cuts *any* hypha on the map, owned by anyone, attached to anyone — the answer to being drained by someone out of reach. The cooldown is what pays for that. |
 
-**Distribute** in detail:
+**On hold** — liked, but parked to keep the first version simple:
+
+- **Distribute** (activated): click one of your colonies; its nutrients leave as a pulse down the chain, giving each colony it reaches an equal share.
+- **Reverse** (activated): click a hypha to flip the whole chain it belongs to in one action rather than one hypha at a time.
+
+**Distribute** in detail, for when it comes back:
 
 - The pulse follows hypha direction — downstream, the way nutrients already flow — through your own colonies only. Upstream colonies, rival colonies and falls are untouched, so the player steers it by how the network is wired.
 - Every colony it reaches gets an equal share: the lump shrinks by the same amount at each stop and is spent at the last one.
@@ -167,13 +173,11 @@ The economics follow from that: holding a boost costs throughput every second, s
 - It travels visibly, roughly a third of a second per hop, and each colony swells as the pulse arrives.
 - It has to be activated: usable at will, it would teleport nutrients anywhere and make hyphae irrelevant for moving resources.
 
-> **Numbers still to choose:** Reach's bonus; Distribute's and Scissors' cooldowns; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
+> **Starting numbers (to tune):** Reach +200 (cap 600 → 800); Vision +50% radius; Scissors cooldown 30 s; Flow 2× for 10 s, cooldown 45 s; boost upkeep 1/s like a colony; 3 boosts per map, a depleted one returning as a random type elsewhere after 60 s; the same passive held twice doesn't stack.
 
 > **Still to pin down:**
-> - Whether two of the same passive boost stack (two Branch nodes = 16 slots, or still 8?).
 > - How much of its store the colony that fires Distribute sends — all of it, or a share like ejecting — and how the pulse treats a loop (each colony once).
 > - Whether a fall-yield boost joins the list: draining a fall yields 3 → 5 instead of 3 → 4, doubling what a sustain loop pays. It passes the passive rule.
-> - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.
 > - Whether an armed-but-unused ability can be cancelled, and whether losing the boost while armed cancels it.
 
 ## 7. Win Condition & Match Flow
@@ -209,7 +213,7 @@ These are the gaps left after reconstructing the mechanics from memory — worth
 - Which mouse button performs the eject/pipeline drag, and what the other button is reserved for (Section 6).
 - Numeric tuning: starting nutrient pool, per-tick upkeep cost (confirmed to be 1, but is it always 1 regardless of node size?), ejected-node starting buffer, pipeline throughput rate, max pipelines per node, wall segment cost/length, the exact curve relating a node's resources to its ejection range / pipeline reach / physical radius.
 - Whether nutrient falls pay upkeep themselves (Section 6.4).
-- Section 6.7's remaining numbers: the Reach bonus, the two activated boosts' cooldowns, boost upkeep, and boost count per map.
+- Tuning Section 6.7's starting numbers once boosts are playable.
 - Player count per match and whether AI fills empty slots.
 - Any meta-progression between matches, or is each round fully self-contained.
 - Whether an established pipeline can be destroyed/severed directly (e.g., an enemy cutting through it, or a wall built after the fact retroactively cutting it), or only made moot by killing an endpoint.
@@ -227,4 +231,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Boosts as capture points (Section 6.7) — five boosts specified (three passive, two activated); numbers and UI still to build.
+9. Boosts as capture points (Section 6.7) — five boosts: Branch, Reach, Vision (passive), Flow, Scissors (activated).

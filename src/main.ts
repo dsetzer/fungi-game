@@ -1,12 +1,12 @@
-import { ROUND_RESTART_DELAY_MS, SERVER_PORT, TICK_MS } from "./config";
-import { Input } from "./input/input";
+import { ROUND_RESTART_DELAY_MS, SERVER_PORT, SIM_HZ, TICK_MS } from "./config";
+import { ABILITY_KEYS, Input } from "./input/input";
 import { NetClient } from "./net/client";
 import { Camera } from "./render/camera";
-import { Renderer } from "./render/renderer";
+import { BOOST_NAMES, Renderer } from "./render/renderer";
 import { emptyArena } from "./sim/arena";
 import { stepMatch } from "./sim/match";
 import type { BotLevel } from "./sim/bot";
-import type { Command, PlayerId } from "./sim/types";
+import { BOOST_KINDS, type BoostKind, type Command, type PlayerId } from "./sim/types";
 import { World } from "./sim/world";
 
 const SOLO_PLAYER: PlayerId = 1;
@@ -23,6 +23,7 @@ const menuName = document.getElementById("menu-name") as HTMLInputElement;
 const menuServer = document.getElementById("menu-server") as HTMLInputElement;
 const menuLevel = document.getElementById("menu-level") as HTMLSelectElement;
 const leaveButton = document.getElementById("leave") as HTMLButtonElement;
+const abilityBar = document.getElementById("abilities")!;
 
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
@@ -115,6 +116,66 @@ const sendCommand = (cmd: Command) => {
 const input = new Input(canvas, camera, currentWorld, currentPlayer, sendCommand);
 
 /**
+ * The boosts you hold (§6.7), along the bottom: passive ones as labels, the two
+ * abilities as buttons with their hotkeys and cooldowns. Built once and updated
+ * in place, so a click is never lost to the HUD rebuilding under the pointer.
+ */
+const PASSIVE_EFFECT: Partial<Record<BoostKind, string>> = {
+  branch: "8 outputs", reach: "+reach", vision: "+vision",
+};
+const HOTKEY: Partial<Record<BoostKind, string>> = Object.fromEntries(
+  Object.entries(ABILITY_KEYS).map(([key, ability]) => [ability, key]),
+);
+const boostSlots = new Map<BoostKind, HTMLElement>();
+for (const kind of BOOST_KINDS) {
+  const hotkey = HOTKEY[kind];
+  const el = document.createElement(hotkey ? "button" : "span");
+  el.hidden = true;
+  if (hotkey) el.addEventListener("click", () => input.fire(kind as "flow" | "scissors"));
+  abilityBar.append(el);
+  boostSlots.set(kind, el);
+}
+
+function updateAbilities(): void {
+  const world = currentWorld();
+  const me = currentPlayer();
+  const abilities = world.player(me)?.abilities;
+  const secs = (tick: number) => Math.ceil((tick - world.tick) / SIM_HZ);
+  let any = false;
+  for (const [kind, el] of boostSlots) {
+    el.hidden = spectating || !world.holds(me, kind);
+    if (el.hidden) continue;
+    any = true;
+    const hotkey = HOTKEY[kind];
+    if (!hotkey || !abilities) {
+      el.textContent = `${BOOST_NAMES[kind]} · ${PASSIVE_EFFECT[kind]}`;
+      continue;
+    }
+    let state = "";
+    let on = false;
+    if (kind === "flow" && world.flowActive(me)) {
+      state = ` · ${secs(abilities.flowUntil)}s`;
+      on = true;
+    } else if (kind === "scissors" && input.armed === "scissors") {
+      state = " · pick a hypha";
+      on = true;
+    } else {
+      const ready = kind === "flow" ? abilities.flowReadyAt : abilities.scissorsReadyAt;
+      if (ready > world.tick) state = ` · ${secs(ready)}s`;
+    }
+    const button = el as HTMLButtonElement;
+    button.disabled = !on && state !== "";
+    button.classList.toggle("on", on);
+    const html = `<kbd>${hotkey}</kbd>${BOOST_NAMES[kind]}${state}`;
+    if (button.dataset.html !== html) {
+      button.dataset.html = html;
+      button.innerHTML = html;
+    }
+  }
+  abilityBar.hidden = !any || !menu.hidden;
+}
+
+/**
  * What the player typed, as a WebSocket URL. Accepts a full ws:// or wss:// URL,
  * host:port, or a bare host (the default game port is assumed). An https page may
  * only open wss:// connections, so the scheme follows the page's.
@@ -201,9 +262,10 @@ function centreOnHome(): void {
 
 function updateHud(): void {
   hud.hidden = !menu.hidden; // nothing to report until a game has started
+  updateAbilities();
   const world = currentWorld();
   const me = currentPlayer();
-  const mine = [...world.nodes.values()].filter((n) => n.owner === me);
+  const mine = [...world.nodes.values()].filter((n) => n.owner === me && n.kind === "colony");
   const total = Math.floor(mine.reduce((s, n) => s + n.nutrients, 0));
 
   const ranked = [...world.players].filter(Boolean).sort((a, b) => b.score - a.score);

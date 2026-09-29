@@ -56,6 +56,21 @@ export function attackRate(attackerNutrients: number): number {
   return Math.min(ATTACK_RATE_MAX, scaled);
 }
 
+// §6.7 Boosts — capture points: feed one to own it, keep it fed to hold it.
+// Starting numbers, all to be tuned in play.
+export const BOOST_COUNT = 3; // on the map at once
+export const BOOST_POOL = 400; // a fresh boost's store
+export const BOOST_RESPAWN_SECONDS = 60; // a depleted one returns this long after, elsewhere
+/** Keeps boosts off the doorstep of a spawn or a colony, so they are worth a trip. */
+export const BOOST_MIN_COLONY_DISTANCE = 700;
+export const BRANCH_OUT_PIPES = 8; // Branch: output slots per colony (normally 4)
+export const REACH_BONUS = 200; // Reach: added to every colony's reach (cap 600 → 800)
+export const VISION_BONUS = 1.5; // Vision: view radius multiplier
+export const FLOW_MULTIPLIER = 2; // Flow: every hypha of yours carries this many times its rate
+export const FLOW_SECONDS = 10;
+export const FLOW_COOLDOWN_SECONDS = 45; // counted from when Flow ends
+export const SCISSORS_COOLDOWN_SECONDS = 30;
+
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
 export const WALL_BAR_LENGTH = 170;
 export const WALL_COST = 15; // one-off, paid by the anchor colony

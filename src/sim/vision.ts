@@ -1,4 +1,3 @@
-import { VISION_MIN, VISION_REACH_SCALE } from "../config";
 import type { Vec } from "./geometry";
 import type { EntityId, GameNode, PlayerId } from "./types";
 import type { World } from "./world";
@@ -8,7 +7,7 @@ import type { World } from "./world";
  * player is allowed to receive — not just what the client chooses to draw.
  */
 export function visionRadius(world: World, colony: GameNode): number {
-  return Math.max(VISION_MIN, world.reachOf(colony) * VISION_REACH_SCALE);
+  return world.visionOf(colony);
 }
 
 /** Vision circles belonging to one player. */

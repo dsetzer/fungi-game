@@ -1,4 +1,4 @@
-import type { Command, EntityId, PlayerId } from "../sim/types";
+import type { BoostKind, Command, EntityId, PlayerId } from "../sim/types";
 
 /**
  * Wire format between client and server. Terrain is never sent — the client
@@ -7,7 +7,7 @@ import type { Command, EntityId, PlayerId } from "../sim/types";
  * so hidden state never reaches the client at all.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export interface RoundInfo {
   seed: number;
@@ -25,13 +25,19 @@ export interface PlayerDTO {
   color: string;
   score: number;
   alive: boolean;
+  /** Activated boosts' timers, as sim ticks (compare with the snapshot's tick). */
+  fu: number;
+  fr: number;
+  sr: number;
 }
 
 /** Short keys: these go out ten times a second, per player. */
 export interface NodeDTO {
   i: EntityId;
-  /** 0 = colony, 1 = nutrient fall */
-  k: 0 | 1;
+  /** 0 = colony, 1 = nutrient fall, 2 = boost */
+  k: 0 | 1 | 2;
+  /** Which boost, on boosts only. */
+  b?: BoostKind;
   o: PlayerId | null;
   x: number;
   y: number;

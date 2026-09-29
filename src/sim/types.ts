@@ -9,9 +9,27 @@ export interface Player {
   alive: boolean;
   /** Nutrients drawn into this player's network from outside it — leaderboard rank. */
   score: number;
+  /** Activated boosts' timers (§6.7), as sim ticks. */
+  abilities: Abilities;
 }
 
-export type NodeKind = "colony" | "fall";
+export interface Abilities {
+  /** Flow doubles this player's hyphae until this tick. */
+  flowUntil: number;
+  /** First tick Flow may be fired again. */
+  flowReadyAt: number;
+  /** First tick Scissors may cut again. */
+  scissorsReadyAt: number;
+}
+
+export type NodeKind = "colony" | "fall" | "boost";
+
+/**
+ * Boosts (§6.7): capture points drawn like falls. Branch, Reach and Vision are
+ * passive while held; Flow and Scissors are abilities the holder fires.
+ */
+export type BoostKind = "branch" | "reach" | "vision" | "flow" | "scissors";
+export const BOOST_KINDS: readonly BoostKind[] = ["branch", "reach", "vision", "scissors", "flow"];
 
 export interface GameNode {
   id: EntityId;
@@ -25,6 +43,8 @@ export interface GameNode {
   rate: number;
   /** Stable per-node value for cosmetic variation (blob shape). */
   seed: number;
+  /** Which boost this is; only set on boost nodes. */
+  boost?: BoostKind;
 }
 
 export interface Pipe {
@@ -68,6 +88,10 @@ export type Command =
   | { type: "cut"; player: PlayerId; pipe: EntityId }
   | { type: "reverse"; player: PlayerId; pipe: EntityId }
   | { type: "wall"; player: PlayerId; from: EntityId; x: number; y: number }
-  | { type: "demolish"; player: PlayerId; wall: EntityId };
+  | { type: "demolish"; player: PlayerId; wall: EntityId }
+  /** Fire Flow: every hypha of yours carries double for a while (§6.7). */
+  | { type: "flow"; player: PlayerId }
+  /** Scissors: cut any hypha on the map, whoever grew it (§6.7). */
+  | { type: "scissors"; player: PlayerId; pipe: EntityId };
 
 export type CheckResult = { ok: true } | { ok: false; reason: string };

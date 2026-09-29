@@ -1,4 +1,4 @@
-import { decode, encode, type PlayerDTO, type ServerMsg, type Snapshot } from "./protocol";
+import { PROTOCOL_VERSION, decode, encode, type PlayerDTO, type ServerMsg, type Snapshot } from "./protocol";
 import { generateArena } from "../sim/arena";
 import type { Command, PlayerId } from "../sim/types";
 import { World } from "../sim/world";
@@ -21,7 +21,7 @@ export class NetClient {
   endsIn = 0;
   online = 0;
   winner: PlayerDTO | null = null;
-  /** Ids of falls being drawn from memory rather than current sight. */
+  /** Ids of falls (and neutral boosts) being drawn from memory rather than current sight. */
   readonly remembered = new Set<number>();
   onRound: (() => void) | null = null;
   /** Called when the connection drops (or never opened) — play solo meanwhile. */
@@ -71,7 +71,7 @@ export class NetClient {
     }
     this.socket.onopen = () => {
       this.retry = 0;
-      this.send({ t: "hello", name: this.name, version: 1, spectate: this.spectate });
+      this.send({ t: "hello", name: this.name, version: PROTOCOL_VERSION, spectate: this.spectate });
     };
     this.socket.onerror = dropped;
     this.socket.onclose = dropped;
@@ -147,7 +147,8 @@ export class NetClient {
       } else {
         world.nodes.set(n.i, {
           id: n.i,
-          kind: n.k === 1 ? "fall" : "colony",
+          kind: n.k === 1 ? "fall" : n.k === 2 ? "boost" : "colony",
+          ...(n.b ? { boost: n.b } : {}),
           owner: n.o,
           x: n.x,
           y: n.y,
@@ -160,7 +161,7 @@ export class NetClient {
     // Anything no longer sent has left sight: keep falls as memory, drop the rest.
     for (const [id, node] of world.nodes) {
       if (keep.has(id)) continue;
-      if (node.kind === "fall") this.remembered.add(id);
+      if (node.owner == null) this.remembered.add(id);
       else world.nodes.delete(id);
     }
 
@@ -180,8 +181,10 @@ export class NetClient {
     for (const p of snap.players) {
       world.players.push({
         id: p.id, name: p.name, color: p.color, isBot: false, alive: p.alive, score: p.score,
+        abilities: { flowUntil: p.fu, flowReadyAt: p.fr, scissorsReadyAt: p.sr },
       });
     }
     world.tick = snap.tick;
+    world.boostsChanged(); // owners may have changed
   }
 }

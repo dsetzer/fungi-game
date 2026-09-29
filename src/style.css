@@ -43,6 +43,50 @@ body {
   display: none;
 }
 
+#abilities {
+  position: fixed;
+  bottom: 12px;
+  right: 84px; /* beside Leave, clear of the help text */
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+}
+
+#abilities[hidden],
+#abilities > [hidden] {
+  display: none;
+}
+
+#abilities > * {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid #cfd4da;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #444;
+  white-space: nowrap;
+}
+
+#abilities button {
+  cursor: pointer;
+}
+
+#abilities button:disabled {
+  color: #999;
+  cursor: default;
+}
+
+#abilities .on {
+  border-color: #f08c00;
+  color: #d9480f;
+}
+
+#abilities kbd {
+  font: inherit;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
 #help {
   position: fixed;
   bottom: 12px;

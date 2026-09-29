@@ -1,6 +1,20 @@
 import type { BotLevel } from "./bot";
 import {
+  BOOST_COUNT,
+  BOOST_MIN_COLONY_DISTANCE,
+  BOOST_POOL,
+  BOOST_RESPAWN_SECONDS,
+  BRANCH_OUT_PIPES,
   DT,
+  FLOW_COOLDOWN_SECONDS,
+  FLOW_MULTIPLIER,
+  FLOW_SECONDS,
+  REACH_BONUS,
+  SCISSORS_COOLDOWN_SECONDS,
+  SIM_HZ,
+  VISION_BONUS,
+  VISION_MIN,
+  VISION_REACH_SCALE,
   EJECT_FRACTION_DEFAULT,
   EJECT_FRACTION_MAX,
   EJECT_FRACTION_MIN,
@@ -39,15 +53,17 @@ import {
   segmentsIntersect,
   type Vec,
 } from "./geometry";
-import type {
-  Barrier,
-  CheckResult,
-  Command,
-  EntityId,
-  GameNode,
-  Pipe,
-  Player,
-  PlayerId,
+import {
+  BOOST_KINDS,
+  type Barrier,
+  type BoostKind,
+  type CheckResult,
+  type Command,
+  type EntityId,
+  type GameNode,
+  type Pipe,
+  type Player,
+  type PlayerId,
 } from "./types";
 
 const PLAYER_COLORS = ["#2f9e44", "#d9480f", "#1971c2", "#9c36b5", "#e8590c", "#0c8599"];
@@ -73,6 +89,10 @@ export class World {
 
   private nextId = 1;
   private queue: Command[] = [];
+  /** Ticks at which a depleted boost comes back somewhere else (§6.7). */
+  private boostReturns: number[] = [];
+  /** Which boosts each player holds; rebuilt lazily after anything changes owner or dies. */
+  private held: Map<PlayerId, Set<BoostKind>> | null = null;
   readonly rng: () => number;
 
   constructor(readonly arena: Arena, seed = 1) {
@@ -99,6 +119,7 @@ export class World {
       world.addFallCluster(centre, s);
     }
     world.scatterNeutralClusters(NEUTRAL_FALL_CLUSTERS);
+    world.placeBoosts(BOOST_COUNT);
     return world;
   }
 
@@ -108,6 +129,7 @@ export class World {
     const id = this.players.length + 1;
     const player: Player = {
       id, name, isBot, alive: true, score: 0,
+      abilities: { flowUntil: 0, flowReadyAt: 0, scissorsReadyAt: 0 },
       color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length],
     };
     this.players.push(player);
@@ -122,12 +144,38 @@ export class World {
     return this.addNode({ kind: "fall", owner: null, x, y, nutrients });
   }
 
+  addBoost(x: number, y: number, boost: BoostKind, nutrients = BOOST_POOL): GameNode {
+    return this.addNode({ kind: "boost", owner: null, x, y, nutrients, boost });
+  }
+
   private addNode(n: Omit<GameNode, "id" | "rate" | "seed">): GameNode {
     const node: GameNode = { ...n, id: this.nextId++, rate: 0, seed: this.rng() * 1000 };
     this.nodes.set(node.id, node);
+    this.boostsChanged();
     return node;
   }
 
+  /**
+   * Scatters boosts (§6.7) on open, reachable ground well away from every colony
+   * and outside anyone's territory, so each is a trip to make and a point to fight
+   * over. The kind is random.
+   */
+  placeBoosts(count: number): void {
+    let placed = 0;
+    for (let attempt = 0; placed < count && attempt < count * 80; attempt++) {
+      const a = this.rng() * Math.PI * 2;
+      const d = Math.sqrt(this.rng()) * (this.arena.radius - 120);
+      const p = { x: Math.cos(a) * d, y: Math.sin(a) * d };
+      if (!this.arena.isReachable(p) || !this.isFreeSpot(p, NODE_SPACING * 2, 0)) continue;
+      const crowded = [...this.nodes.values()].some(
+        (n) => (n.kind === "colony" || n.kind === "boost") && dist(n.x, n.y, p.x, p.y) < BOOST_MIN_COLONY_DISTANCE,
+      );
+      const nearSpawn = this.arena.spawns.some((s) => dist(s.x, s.y, p.x, p.y) < BOOST_MIN_COLONY_DISTANCE);
+      if (crowded || nearSpawn) continue;
+      this.addBoost(p.x, p.y, BOOST_KINDS[Math.floor(this.rng() * BOOST_KINDS.length)]);
+      placed++;
+    }
+  }
   /**
    * A cluster of nutrient blobs of varying size, biggest toward the middle.
    * Blobs that would land in a wall or on another node are skipped.
@@ -190,11 +238,70 @@ export class World {
 
   /** Visual size of the fluid area around a node — grows with its nutrients. */
   auraOf(n: GameNode): number {
-    return n.kind === "fall" ? fallAura(n.nutrients) : colonyAura(n.nutrients);
+    return n.kind === "colony" ? colonyAura(n.nutrients) : fallAura(n.nutrients);
   }
 
+  /** Reach grows with a node's store, capped; the Reach boost adds to it (§6.7). */
   reachOf(n: GameNode): number {
-    return reach(n.nutrients);
+    return reach(n.nutrients) + (this.holds(n.owner, "reach") ? REACH_BONUS : 0);
+  }
+
+  /** How far a node of yours lights up the fog (§8); the Vision boost widens it. */
+  visionOf(n: GameNode): number {
+    const r = Math.max(VISION_MIN, this.reachOf(n) * VISION_REACH_SCALE);
+    return this.holds(n.owner, "vision") ? r * VISION_BONUS : r;
+  }
+
+  // ---------- boosts (§6.7) ----------
+
+  /**
+   * Forget which boosts are held, after a node changes owner, appears or dies.
+   * The sim calls this itself; a client filling the world from snapshots calls it
+   * once per snapshot.
+   */
+  boostsChanged(): void {
+    this.held = null;
+  }
+
+  /** Whether a player holds a boost of this kind. Holding two changes nothing. */
+  holds(player: PlayerId | null, boost: BoostKind): boolean {
+    if (player == null) return false;
+    if (!this.held) {
+      this.held = new Map();
+      for (const n of this.nodes.values()) {
+        if (n.kind !== "boost" || n.owner == null || !n.boost) continue;
+        const set = this.held.get(n.owner) ?? new Set<BoostKind>();
+        set.add(n.boost);
+        this.held.set(n.owner, set);
+      }
+    }
+    return this.held.get(player)?.has(boost) ?? false;
+  }
+
+  /** Output slots on a node you own: doubled by Branch. */
+  outputCap(nodeId: EntityId): number {
+    return this.holds(this.nodes.get(nodeId)?.owner ?? null, "branch") ? BRANCH_OUT_PIPES : MAX_OUT_PIPES_PER_COLONY;
+  }
+
+  /** Whether a player's Flow is running right now. Losing the boost ends it. */
+  flowActive(player: PlayerId): boolean {
+    const p = this.player(player);
+    return !!p && this.tick < p.abilities.flowUntil && this.holds(player, "flow");
+  }
+
+  canFlow(player: PlayerId): CheckResult {
+    const p = this.player(player);
+    if (!p || !this.holds(player, "flow")) return NO("you don't hold Flow");
+    if (this.tick < p.abilities.flowReadyAt) return NO("Flow is recharging");
+    return YES;
+  }
+
+  canScissors(player: PlayerId, pipeId: EntityId): CheckResult {
+    const p = this.player(player);
+    if (!p || !this.holds(player, "scissors")) return NO("you don't hold Scissors");
+    if (this.tick < p.abilities.scissorsReadyAt) return NO("Scissors is recharging");
+    if (!this.pipes.has(pipeId)) return NO("no such hypha");
+    return YES;
   }
 
   /** Hyphae flowing out of this node. */
@@ -313,7 +420,7 @@ export class World {
     if (!from || from.kind !== "colony" || from.owner !== player) return NO("not your colony");
     if (this.ejectAmount(from, fraction) < EJECT_MIN_AMOUNT) return NO("too weak to eject");
     // Ejecting auto-grows a hypha parent → child, so the parent needs a free output.
-    if (this.ownOutCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
+    if (this.ownOutCount(fromId) >= this.outputCap(fromId)) return NO("output limit reached");
     if (dist(from.x, from.y, target.x, target.y) > this.reachOf(from)) return NO("out of reach");
     if (!this.isFreeSpot(target, NODE_SPACING, player)) return NO("inside rival territory");
     if (!this.hasLineOfSight(from, target)) return NO("no line of sight");
@@ -331,8 +438,8 @@ export class World {
     // The cap is on what a colony sends of its own accord, so it only applies when
     // the source is yours. Draining a rival never runs out of slots — otherwise a
     // player who spent all four on their own network would be unattackable.
-    if (from.kind === "colony" && from.owner === player) {
-      if (this.ownOutCount(fromId) >= MAX_OUT_PIPES_PER_COLONY) return NO("output limit reached");
+    if (from.kind !== "fall" && from.owner === player) {
+      if (this.ownOutCount(fromId) >= this.outputCap(fromId)) return NO("output limit reached");
     }
     const maxReach = Math.max(...mine.map((n) => this.reachOf(n)));
     if (dist(from.x, from.y, to.x, to.y) > maxReach) return NO("out of reach");
@@ -352,7 +459,7 @@ export class World {
     if (pipe.owner !== player) return NO("not your hypha");
     const newSource = this.nodes.get(pipe.to);
     if (!newSource) return NO("invalid target");
-    if (newSource.kind === "colony" && this.ownOutCount(newSource.id) >= MAX_OUT_PIPES_PER_COLONY) {
+    if (newSource.owner != null && this.ownOutCount(newSource.id) >= this.outputCap(newSource.id)) {
       return NO("output limit reached");
     }
     return YES;
@@ -445,6 +552,19 @@ export class World {
         if (this.canDemolish(cmd.player, cmd.wall).ok) this.barriers.delete(cmd.wall);
         return;
       }
+      case "flow": {
+        if (!this.canFlow(cmd.player).ok) return;
+        const a = this.player(cmd.player)!.abilities;
+        a.flowUntil = this.tick + FLOW_SECONDS * SIM_HZ;
+        a.flowReadyAt = a.flowUntil + FLOW_COOLDOWN_SECONDS * SIM_HZ;
+        return;
+      }
+      case "scissors": {
+        if (!this.canScissors(cmd.player, cmd.pipe).ok) return;
+        this.pipes.delete(cmd.pipe);
+        this.player(cmd.player)!.abilities.scissorsReadyAt = this.tick + SCISSORS_COOLDOWN_SECONDS * SIM_HZ;
+        return;
+      }
     }
   }
 
@@ -473,8 +593,32 @@ export class World {
     for (const c of cmds) this.apply(c);
 
     this.flowAndUpkeep();
+    this.captureBoosts();
     this.removeDead();
     this.updatePlayers();
+    this.returnBoosts();
+  }
+
+  /**
+   * A neutral boost belongs to the first player to feed it (§6.7). Once owned it
+   * stays theirs: a rival takes it away by draining it dry, not by feeding it.
+   */
+  private captureBoosts(): void {
+    for (const p of this.pipes.values()) {
+      const dst = this.nodes.get(p.to);
+      const src = this.nodes.get(p.from);
+      if (dst?.kind !== "boost" || dst.owner != null || src?.owner == null) continue;
+      dst.owner = src.owner;
+      this.boostsChanged();
+    }
+  }
+
+  /** Depleted boosts come back after a while, somewhere else, as any kind. */
+  private returnBoosts(): void {
+    const due = this.boostReturns.filter((t) => t <= this.tick).length;
+    if (due === 0) return;
+    this.boostReturns = this.boostReturns.filter((t) => t > this.tick);
+    this.placeBoosts(due);
   }
 
   private flowAndUpkeep(): void {
@@ -492,7 +636,9 @@ export class World {
       const dst = this.nodes.get(p.to)!;
       const attack =
         src.kind === "colony" && src.owner != null && dst.owner != null && dst.owner !== src.owner;
-      const r = (attack ? attackRate(dst.nutrients) : PIPE_RATE_PER_SEC) * DT;
+      // Flow (§6.7) doubles every hypha its holder grew — gathering, feeding and attacking alike.
+      const boosted = this.flowActive(p.owner) ? FLOW_MULTIPLIER : 1;
+      const r = (attack ? attackRate(dst.nutrients) : PIPE_RATE_PER_SEC) * DT * boosted;
       rateOf.set(p.id, r);
       demandOf.set(p.from, (demandOf.get(p.from) ?? 0) + r);
     }
@@ -510,7 +656,8 @@ export class World {
       const amount = rateOf.get(p.id)! * share;
       // Draining a fall yields more than it costs the fall (§6.4): gathering is
       // meant to be fast. Colony-to-colony transfers stay 1:1.
-      const gained = src.kind === "fall" ? amount * FALL_DRAIN_GAIN : amount;
+      // A boost drains like a fall, whoever owns it (§6.7).
+      const gained = src.kind === "colony" ? amount : amount * FALL_DRAIN_GAIN;
       // Score is everything drawn into your network from outside it (§7 leaderboard).
       const dst = this.nodes.get(p.to)!;
       if (dst.owner != null && dst.owner !== src.owner) {
@@ -526,8 +673,9 @@ export class World {
     // while nutrients flow into it and its hyphae don't demand more than it
     // receives. Judged on demand, not on what a nearly-empty node managed to send.
     const EPS = 1e-9;
+    // Anything owned pays: colonies, and boosts once captured. Neutral ground doesn't.
     for (const n of this.nodes.values()) {
-      if (n.kind !== "colony" && !FALLS_PAY_UPKEEP) continue;
+      if (n.owner == null && !FALLS_PAY_UPKEEP) continue;
       const inAmt = inflow.get(n.id) ?? 0;
       const sustained = inAmt > EPS && inAmt + EPS >= demand(n.id);
       if (!sustained) add(n.id, -UPKEEP_PER_SEC * DT);
@@ -547,6 +695,10 @@ export class World {
     for (const n of this.nodes.values()) {
       if (n.nutrients > 0) continue;
       this.nodes.delete(n.id);
+      if (n.kind === "boost") {
+        this.boostReturns.push(this.tick + BOOST_RESPAWN_SECONDS * SIM_HZ);
+        this.boostsChanged();
+      }
       for (const p of this.pipes.values()) {
         if (p.from === n.id || p.to === n.id) this.pipes.delete(p.id);
       }
@@ -557,9 +709,17 @@ export class World {
   }
 
   private updatePlayers(): void {
+    // A player lives on while they have a colony; boosts alone don't count, and
+    // go back to neutral when their holder is wiped out.
     const alive = new Set<PlayerId>();
-    for (const n of this.nodes.values()) if (n.owner != null) alive.add(n.owner);
+    for (const n of this.nodes.values()) if (n.kind === "colony" && n.owner != null) alive.add(n.owner);
     for (const pl of this.players) pl.alive = alive.has(pl.id);
+    for (const n of this.nodes.values()) {
+      if (n.kind === "boost" && n.owner != null && !alive.has(n.owner)) {
+        n.owner = null;
+        this.boostsChanged();
+      }
+    }
 
     if (!this.endOnLastStanding) return;
     // With a single player (solo sandbox) the round only ends when they die.

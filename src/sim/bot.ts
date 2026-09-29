@@ -1,12 +1,15 @@
-import { MAX_OUT_PIPES_PER_COLONY, NODE_SPACING } from "../config";
+import { MAX_OUT_PIPES_PER_COLONY, MAX_WALLS_PER_COLONY, NODE_SPACING } from "../config";
 import { dist, type Vec } from "./geometry";
 import type { Command, GameNode, PlayerId } from "./types";
 import type { World } from "./world";
 
 /**
- * Computer players. Every bot has the same goal as a human — gather the most —
- * and the same brain: tap every fall it can reach, expand toward food it can't,
- * defend what it has and drain weaker rivals. Difficulty is only how fast it may
+ * Computer players. Every bot plays to win: gathering is the fuel, rivals are the
+ * obstacle. Each bot has the same brain — tap every fall it can reach, expand
+ * toward food it can't, pick one rival as its enemy and bring the fight to it:
+ * supply lines toward the front (reversing lines that flow the wrong way), focus
+ * fire on the enemy's weakest colonies, walls where a stronger enemy threatens.
+ * Difficulty is only how fast it may
  * act, the way a player is limited by reaction time and hands: each throw, new
  * line or cut spends one action, and actions refill at the level's rate.
  * Bots issue ordinary Commands — no special access to the sim — so they double as
@@ -51,9 +54,12 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
     // Most urgent first; each step stops looking once the actions run out.
     bot.defend();
     bot.rescueStarving();
+    bot.reconnectStranded();
     bot.tapFalls();
-    bot.cutCordsWhenOverspending();
+    bot.wallOffThreats();
     bot.attack();
+    bot.supplyTheFront();
+    bot.cutCordsWhenOverspending();
     bot.expand();
   }
   bank.set(player, actions);
@@ -64,6 +70,10 @@ class Brain {
   private readonly falls: GameNode[];
   /** Pairs already joined by a hypha (either direction) or given one this turn. */
   private readonly joined = new Set<string>();
+  /** The rival being fought: the nearest, weighted toward weaker ones. Null when alone. */
+  private readonly enemy: PlayerId | null;
+  /** The enemy's colonies — what the front faces. */
+  private readonly enemyColonies: GameNode[];
 
   constructor(
     private world: World,
@@ -75,6 +85,47 @@ class Brain {
     this.nodes = [...world.nodes.values()];
     this.falls = this.nodes.filter((n) => n.kind === "fall");
     for (const p of world.pipes.values()) this.joined.add(pairKey(p.from, p.to));
+    this.enemy = this.pickEnemy();
+    this.enemyColonies = this.nodes.filter((n) => n.kind === "colony" && n.owner === this.enemy);
+  }
+
+  /**
+   * The rival to fight: close ones first, and among those the weaker — a nearby
+   * weakling is the kill to go for, a distant giant is not.
+   */
+  private pickEnemy(): PlayerId | null {
+    const ours = this.mine.reduce((t, c) => t + c.nutrients, 0) || 1;
+    const seen = new Map<PlayerId, { near: number; total: number }>();
+    for (const n of this.nodes) {
+      if (n.kind !== "colony" || n.owner == null || n.owner === this.player) continue;
+      const near = Math.min(...this.mine.map((c) => dist(c.x, c.y, n.x, n.y)));
+      const e = seen.get(n.owner) ?? { near: Infinity, total: 0 };
+      e.near = Math.min(e.near, near);
+      e.total += n.nutrients;
+      seen.set(n.owner, e);
+    }
+    let best: PlayerId | null = null;
+    let bestScore = Infinity;
+    for (const [id, e] of seen) {
+      const score = e.near * (1 + e.total / ours);
+      if (score < bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  private readonly frontCache = new Map<number, number>();
+
+  /** How far a colony is from the front: its distance to the nearest enemy colony. */
+  private frontDistance(n: GameNode): number {
+    const cached = this.frontCache.get(n.id);
+    if (cached !== undefined) return cached;
+    let d = Infinity;
+    for (const e of this.enemyColonies) d = Math.min(d, dist(n.x, n.y, e.x, e.y));
+    this.frontCache.set(n.id, d);
+    return d;
   }
 
   private connect(from: GameNode, to: GameNode): boolean {
@@ -171,13 +222,109 @@ class Brain {
     }
   }
 
-  /** Drain the weakest rival colony a stronger colony of ours can reach. */
+  /**
+   * A colony cut off from the network — no hypha of ours touching it — has a
+   * store nobody can use. Link it to the nearest colony of ours that sits closer
+   * to the front, so its nutrients go where the fighting is.
+   */
+  reconnectStranded(): void {
+    const linked = new Set<number>();
+    for (const p of this.world.pipes.values()) {
+      if (p.owner !== this.player) continue;
+      const a = this.world.nodes.get(p.from);
+      const b = this.world.nodes.get(p.to);
+      if (a?.owner === this.player && b?.owner === this.player) {
+        linked.add(a.id);
+        linked.add(b.id);
+      }
+    }
+    if (this.mine.length < 2) return;
+    for (const n of this.mine) {
+      if (!this.canAct()) return;
+      if (linked.has(n.id) || n.nutrients < 40) continue;
+      const here = this.frontDistance(n);
+      const toward = this.mine
+        .filter((m) => m !== n && this.frontDistance(m) <= here)
+        .sort(this.byDistanceTo(n));
+      for (const m of toward) if (this.connect(n, m)) break;
+    }
+  }
+
+  /**
+   * An enemy colony that could latch onto one of ours, and is stronger than it,
+   * gets walled off: a crossbar across the line between them blocks new
+   * connections either way. A colony that is the stronger one doesn't wall — the
+   * wall would block its own attack just the same.
+   */
+  wallOffThreats(): void {
+    for (const colony of this.mine) {
+      if (!this.canAct()) return;
+      // Only colonies worth protecting: walls cost, and each one also blocks our own lines.
+      if (colony.nutrients < 150 || this.world.wallCount(colony.id) >= MAX_WALLS_PER_COLONY) continue;
+      for (const threat of this.enemyColonies) {
+        if (threat.nutrients <= colony.nutrients) continue;
+        const d = dist(colony.x, colony.y, threat.x, threat.y);
+        if (d > this.world.reachOf(threat) || this.joined.has(pairKey(colony.id, threat.id))) continue;
+        if (!this.world.hasLineOfSight(colony, threat)) continue; // already blocked
+        const along = Math.min(this.world.reachOf(colony) * 0.8, d * 0.4);
+        const spot = { x: colony.x + ((threat.x - colony.x) / d) * along, y: colony.y + ((threat.y - colony.y) / d) * along };
+        if (this.world.canBuildWall(this.player, colony.id, spot).ok) {
+          this.act({ type: "wall", player: this.player, from: colony.id, ...spot });
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Drain the enemy — focus fire: its weakest colonies first, and several of ours
+   * on the same victim, so kills finish. Other rivals are only drained when much
+   * weaker. A hunter needs enough to out-pull what the victim can be fed.
+   */
   attack(): void {
     const rivals = this.nodes.filter((n) => n.kind === "colony" && n.owner != null && n.owner !== this.player);
+    const prey = rivals
+      .map((r) => ({ r, bias: r.owner === this.enemy ? 0.5 : 1 }))
+      .sort((a, b) => a.r.nutrients * a.bias - b.r.nutrients * b.bias);
     for (const hunter of [...this.mine].sort((a, b) => b.nutrients - a.nutrients)) {
       if (!this.canAct() || hunter.nutrients < 150) return;
-      const prey = rivals.filter((r) => r.nutrients < hunter.nutrients * 0.8).sort((a, b) => a.nutrients - b.nutrients);
-      for (const r of prey) if (this.connect(r, hunter)) return;
+      for (const { r } of prey) {
+        const worth = r.owner === this.enemy ? r.nutrients < hunter.nutrients * 1.5 : r.nutrients < hunter.nutrients * 0.8;
+        if (worth && this.connect(r, hunter)) break;
+      }
+    }
+  }
+
+  /**
+   * Move nutrients to the front. A rich colony well back from the enemy, with a
+   * slot to spare, feeds a colony of ours closer to it; and a line of ours that
+   * carries nutrients away from the front — to a colony that feeds itself from a
+   * fall — is reversed to flow toward it instead.
+   */
+  supplyTheFront(): void {
+    if (this.enemyColonies.length === 0) return;
+    const fedByFall = new Set<number>();
+    for (const p of this.world.pipes.values()) {
+      if (p.owner === this.player && this.world.nodes.get(p.from)?.kind === "fall") fedByFall.add(p.to);
+    }
+    for (const p of this.world.pipes.values()) {
+      if (!this.canAct()) return;
+      if (p.owner !== this.player) continue;
+      const src = this.world.nodes.get(p.from);
+      const dst = this.world.nodes.get(p.to);
+      if (src?.owner !== this.player || dst?.owner !== this.player || !fedByFall.has(dst.id)) continue;
+      if (this.frontDistance(dst) > this.frontDistance(src) + 100 && this.world.canReverse(this.player, p.id).ok) {
+        this.act({ type: "reverse", player: this.player, pipe: p.id });
+      }
+    }
+    for (const n of [...this.mine].sort((a, b) => b.nutrients - a.nutrients)) {
+      if (!this.canAct() || n.nutrients < 300) return;
+      if (this.world.ownOutCount(n.id) >= MAX_OUT_PIPES_PER_COLONY) continue;
+      const here = this.frontDistance(n);
+      const toward = this.mine
+        .filter((m) => m !== n && this.frontDistance(m) < here - 150)
+        .sort((a, b) => this.frontDistance(a) - this.frontDistance(b));
+      for (const m of toward) if (this.connect(n, m)) break;
     }
   }
 
@@ -201,23 +348,37 @@ class Brain {
     const nearest = (t: GameNode) =>
       throwers.reduce((a, b) => (dist(a.x, a.y, t.x, t.y) <= dist(b.x, b.y, t.x, t.y) ? a : b));
 
-    const targets: { at: GameNode; from: GameNode; score: number }[] = [];
+    type Target = { at: GameNode; from: GameNode; score: number };
+    const food: Target[] = [];
+    const foes: Target[] = [];
     for (const fall of this.falls) {
       if (fall.nutrients < 40) continue;
       if (this.mine.some((c) => this.joined.has(pairKey(fall.id, c.id)))) continue;
       const from = nearest(fall);
-      targets.push({ at: fall, from, score: fall.nutrients / (dist(from.x, from.y, fall.x, fall.y) + 300) });
+      food.push({ at: fall, from, score: fall.nutrients / (dist(from.x, from.y, fall.x, fall.y) + 300) });
     }
     for (const rival of this.nodes) {
       if (rival.kind !== "colony" || rival.owner == null || rival.owner === this.player) continue;
       const from = nearest(rival);
       const edge = from.nutrients - rival.nutrients; // how much stronger we are there
       if (edge <= 0) continue;
-      targets.push({ at: rival, from, score: (edge * 2) / (dist(from.x, from.y, rival.x, rival.y) + 300) });
+      // Bring the fight to the enemy: its colonies weigh far more than anyone else's.
+      const weight = rival.owner === this.enemy ? 6 : 2;
+      foes.push({ at: rival, from, score: (edge * weight) / (dist(from.x, from.y, rival.x, rival.y) + 300) });
     }
-    targets.sort((a, b) => b.score - a.score);
+    // Separate shortlists, tried in turn: walled-off rivals must never crowd food
+    // out of consideration (a single ranked list stalled every bot once the
+    // enemies nearby were all behind walls, with food still all over the map).
+    const best = (list: Target[]) => list.sort((a, b) => b.score - a.score).slice(0, 5);
+    const topFoes = best(foes);
+    const topFood = best(food);
+    const targets: Target[] = [];
+    for (let i = 0; i < 5; i++) {
+      if (topFoes[i]) targets.push(topFoes[i]);
+      if (topFood[i]) targets.push(topFood[i]);
+    }
 
-    for (const { at, from } of targets.slice(0, 8)) {
+    for (const { at, from } of targets) {
       const d = dist(from.x, from.y, at.x, at.y);
       const reach = this.world.reachOf(from);
       // Land just short of it, or as far as this colony can throw.
@@ -231,10 +392,13 @@ class Brain {
             x: from.x + Math.cos(heading + turn) * step * length,
             y: from.y + Math.sin(heading + turn) * step * length,
           };
-          if (this.world.canEject(this.player, from.id, spot).ok) {
-            this.act({ type: "eject", player: this.player, from: from.id, ...spot });
-            return;
-          }
+          if (!this.world.canEject(this.player, from.id, spot).ok) continue;
+          // Going for a rival colony: land only where it can actually be latched
+          // onto — in sight past terrain, walls and hyphae. This is how a bot goes
+          // round a wall instead of landing uselessly behind it.
+          if (at.kind === "colony" && !(this.world.hasLineOfSight(spot, at) && !this.world.crossesHypha(spot, at))) continue;
+          this.act({ type: "eject", player: this.player, from: from.id, ...spot });
+          return;
         }
       }
     }

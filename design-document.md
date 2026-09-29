@@ -153,7 +153,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 | Boost | Kind | Effect | Notes |
 |---|---|---|---|
-| **Branch** | Passive | Every colony you own gets **+1 output**. | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. |
+| **Branch** | Passive | Every colony you own gets **double the output slots** (4 → 8). | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. Doubled rather than +1 because of the sustain engine: a loop nets a third of the pipe rate, so three loops feed exactly one output and a 3-loop + 1-output hub fills all four slots with no surplus or deficit. One extra slot is nearly useless there — a fourth loop only piles surplus in the hub, a second output starves it. Eight slots fit two full engines (six loops + two outputs) or anything else a player builds. |
 | **Reach** | Passive | Every colony's ejection and hypha reach increases. | Line of sight still applies, so enclaves and chokepoints are unaffected. The bonus is always on, so it should be well under the +100% considered for a one-shot version. |
 | **Vision** | Passive | A larger view radius for everything you own. | |
 | **Distribute** | Activated | Click one of your colonies: its nutrients leave as a pulse that travels down the chain, giving each colony it reaches an equal share. | See below. |
@@ -170,7 +170,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 > **Numbers still to choose:** Reach's bonus; Distribute's and Scissors' cooldowns; the boost node's upkeep; how many boosts a map carries and how quickly they respawn.
 
 > **Still to pin down:**
-> - Whether two of the same passive boost stack (two Branch nodes = +2 outputs?).
+> - Whether two of the same passive boost stack (two Branch nodes = 16 slots, or still 8?).
 > - How much of its store the colony that fires Distribute sends — all of it, or a share like ejecting — and how the pulse treats a loop (each colony once).
 > - Whether a fall-yield boost joins the list: draining a fall yields 3 → 5 instead of 3 → 4, doubling what a sustain loop pays. It passes the passive rule.
 > - Whether a neutral, uncaptured boost can simply be drained for its nutrients like a fall, or whether feeding it is the only interaction.

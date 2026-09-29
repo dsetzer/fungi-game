@@ -1,3 +1,4 @@
+import type { BotLevel } from "./bot";
 import {
   DT,
   EJECT_FRACTION_DEFAULT,
@@ -67,6 +68,8 @@ export class World {
   ended = false;
   /** Server rounds end on a timer and respawn the dead, so last-standing is off. */
   endOnLastStanding = true;
+  /** How the computer players in this match play (solo and spectate). */
+  botLevel: BotLevel = "normal";
 
   private nextId = 1;
   private queue: Command[] = [];

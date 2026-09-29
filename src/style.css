@@ -123,7 +123,8 @@ body {
   color: #666;
 }
 
-#menu input {
+#menu input,
+#menu select {
   font: inherit;
   font-size: 15px;
   color: #333;

@@ -5,6 +5,7 @@ import { Camera } from "./render/camera";
 import { Renderer } from "./render/renderer";
 import { emptyArena } from "./sim/arena";
 import { stepMatch } from "./sim/match";
+import type { BotLevel } from "./sim/bot";
 import type { Command, PlayerId } from "./sim/types";
 import { World } from "./sim/world";
 
@@ -20,6 +21,7 @@ const banner = document.getElementById("banner")!;
 const menu = document.getElementById("menu") as HTMLFormElement;
 const menuName = document.getElementById("menu-name") as HTMLInputElement;
 const menuServer = document.getElementById("menu-server") as HTMLInputElement;
+const menuLevel = document.getElementById("menu-level") as HTMLSelectElement;
 
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
@@ -41,12 +43,17 @@ const SPECTATOR: PlayerId = 0;
 menuName.value = pickName();
 document.getElementById("menu-version")!.textContent = __APP_VERSION__;
 menuServer.value = defaultServer();
+menuLevel.value = localStorage.getItem("fungi.level") ?? "normal";
+/** How fast the solo bots may act (spectated matches too). */
+let botLevel: BotLevel = "normal";
 menu.addEventListener("submit", (e) => {
   e.preventDefault();
   const name = menuName.value.trim().slice(0, 16) || pickName();
   const server = menuServer.value.trim();
   localStorage.setItem("fungi.name", name);
   localStorage.setItem("fungi.server", server);
+  botLevel = menuLevel.value as BotLevel;
+  localStorage.setItem("fungi.level", botLevel);
   menu.hidden = true;
   // Spectate: with no server, watch a local all-bot match; with one, watch it live.
   spectating = (e as SubmitEvent).submitter?.id === "menu-spectate";
@@ -126,6 +133,7 @@ function pickName(): string {
 function startSolo(): void {
   if (solo) return;
   solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
+  solo.botLevel = botLevel;
   centredOn = null;
 }
 
@@ -133,6 +141,7 @@ function restartSolo(): void {
   clearTimeout(soloRestart);
   soloRestart = undefined;
   solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
+  solo.botLevel = botLevel;
   centredOn = null;
   banner.hidden = true;
 }
@@ -192,8 +201,8 @@ function updateHud(): void {
       ? net
         ? "offline · solo with bots (retrying server)"
         : spectating
-          ? "spectating · bots only (R = new match)"
-          : "solo with bots"
+          ? `spectating · ${botLevel} bots (R = new match)`
+          : `solo · ${botLevel} bots`
       : net
         ? "connecting…"
         : "";

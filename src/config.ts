@@ -111,7 +111,6 @@ export const CAMERA_FLY_ON_EJECT = true;
 
 // Match (solo/offline mode)
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
-export const BOT_THINK_SECONDS = 1;
 export const ROUND_RESTART_DELAY_MS = 4000;
 
 // Nodes are points: a fixed-size core dot (used for hit-testing and spacing).

@@ -14,6 +14,13 @@
       <h1>Fungi</h1>
       <label>Name <input id="menu-name" maxlength="16" required /></label>
       <label>Server <input id="menu-server" placeholder="Leave empty to play solo" spellcheck="false" /></label>
+      <label>Bots (solo)
+        <select id="menu-level">
+          <option value="easy">Easy — slow to react</option>
+          <option value="normal">Normal</option>
+          <option value="hard">Hard — fast hands</option>
+        </select>
+      </label>
       <p>Solo is a local match against bots. To play online, enter a game server as <i>host:port</i>. Spectate watches the whole arena without playing.</p>
       <div class="menu-buttons">
         <button type="submit" id="menu-play">Play</button>

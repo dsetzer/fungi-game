@@ -81,6 +81,7 @@ export class Renderer {
       const seen = fog.visibleNodes(world, player);
       shown = (id: number) => seen.has(id);
     }
+    input.setVisible(world, shown); // snapping only picks what the player can see
     this.growth.update(world, timeMs);
     const sinceLast = this.lastDrawMs ? timeMs - this.lastDrawMs : 0;
     this.lastDrawMs = timeMs;
@@ -384,6 +385,13 @@ export class Renderer {
     ctx.lineTo(end.x, end.y);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    if (target) {
+      // Ring the node the drop has snapped to, so it's clear before letting go.
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, world.radiusOf(target) + 7 / this.camera.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     if (!target) {
       // Ghost of the colony about to be thrown, sized by what it would carry,

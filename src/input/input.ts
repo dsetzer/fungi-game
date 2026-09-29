@@ -11,6 +11,14 @@ import type { World } from "../sim/world";
 
 const PAN_SPEED = 900; // world px per second at zoom 1
 const CLICK_SLOP = 4; // screen px of movement before a right-press becomes a drag
+/**
+ * How close the cursor must be to a node, in screen pixels past its dot, to pick
+ * it: starting a drag on it, or dropping a drag on it to connect. Screen pixels so
+ * it feels the same at any zoom — generous zoomed out, where dots are tiny and fast
+ * play is hardest to aim. Not the node's territory: that would swallow every throw
+ * into your own territory. The nearest node in range wins.
+ */
+const SNAP_PX = 28;
 
 export interface DragState {
   from: EntityId;
@@ -90,13 +98,26 @@ export class Input {
     if (this.right?.wallFrom != null && !world.nodes.has(this.right.wallFrom)) this.right = null;
   }
 
+  /**
+   * Which nodes the player can see, from the renderer's fog, and the world it was
+   * worked out for. Snapping only picks visible nodes, so a drop near a colony
+   * hidden in fog doesn't connect to it. A check made for a different world (a
+   * round that has just been replaced) is ignored rather than trusted.
+   */
+  private visible: { world: World; canSee: (id: EntityId) => boolean } | null = null;
+
+  setVisible(world: World, canSee: (id: EntityId) => boolean): void {
+    this.visible = { world, canSee };
+  }
+
   nodeAt(p: Vec): GameNode | undefined {
     const world = this.getWorld();
-    // Cores are small dots, so be generous with the click target.
-    const slop = 10 / this.camera.zoom;
+    const slop = SNAP_PX / this.camera.zoom;
+    const canSee = this.visible?.world === world ? this.visible.canSee : () => true;
     let best: GameNode | undefined;
     let bestD = Infinity;
     for (const n of world.nodes.values()) {
+      if (!canSee(n.id)) continue;
       const d = Math.hypot(n.x - p.x, n.y - p.y);
       if (d < world.radiusOf(n) + slop && d < bestD) {
         best = n;

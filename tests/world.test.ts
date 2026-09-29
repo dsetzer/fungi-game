@@ -274,8 +274,8 @@ describe("pipes", () => {
     const { world, me } = soloWorld();
     const rival = world.addPlayer("rival", true);
     // Long enough that the rival's territory sits well clear of the crossing.
-    const left = world.addColony(rival.id, -400, 0, 1000);
-    const right = world.addColony(rival.id, 400, 0, 1000);
+    const left = world.addColony(rival.id, -250, 0, 1000);
+    const right = world.addColony(rival.id, 250, 0, 1000);
     world.enqueue({ type: "connect", player: rival.id, from: left.id, to: right.id });
     world.step();
     const top = world.addColony(me.id, 0, 100, 200);
@@ -345,7 +345,7 @@ describe("pipes", () => {
   it("keeps rivals out of a colony's blob, but not out of a fall's", () => {
     const { world, me } = soloWorld([], 4000);
     const rival = world.addPlayer("rival", true);
-    const giant = world.addColony(rival.id, 0, 0, 25_000);
+    const giant = world.addColony(rival.id, 0, 0, 1000);
     const blob = world.auraOf(giant);
     // Modest enough that my own blob doesn't cover the target - my territory is
     // mine to build in, so it would mask what this test is checking.

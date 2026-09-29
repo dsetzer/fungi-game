@@ -145,6 +145,14 @@ export function fallAura(nutrients: number): number {
   return Math.min(420, 3 + Math.sqrt(Math.max(0, nutrients)) * 2.5);
 }
 
+/**
+ * However rich a colony gets, it never reaches across the map: past this, more
+ * nutrients only make it a stronger thrower of children, not a longer arm. Without
+ * a ceiling one fat colony could tap falls and drain rivals from far away and never
+ * need to expand. The start reach (420) sits well under it.
+ */
+export const MAX_REACH = 600;
+
 export function reach(nutrients: number): number {
-  return 220 + Math.sqrt(Math.max(0, nutrients)) * 20;
+  return Math.min(MAX_REACH, 220 + Math.sqrt(Math.max(0, nutrients)) * 20);
 }

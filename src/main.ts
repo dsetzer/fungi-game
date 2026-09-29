@@ -22,6 +22,7 @@ const menu = document.getElementById("menu") as HTMLFormElement;
 const menuName = document.getElementById("menu-name") as HTMLInputElement;
 const menuServer = document.getElementById("menu-server") as HTMLInputElement;
 const menuLevel = document.getElementById("menu-level") as HTMLSelectElement;
+const leaveButton = document.getElementById("leave") as HTMLButtonElement;
 
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
@@ -55,6 +56,7 @@ menu.addEventListener("submit", (e) => {
   botLevel = menuLevel.value as BotLevel;
   localStorage.setItem("fungi.level", botLevel);
   menu.hidden = true;
+  leaveButton.hidden = false;
   // Spectate: with no server, watch a local all-bot match; with one, watch it live.
   spectating = (e as SubmitEvent).submitter?.id === "menu-spectate";
   renderer.spectate = spectating;
@@ -62,6 +64,27 @@ menu.addEventListener("submit", (e) => {
   if (server) connectTo(server, name);
   else startSolo();
 });
+
+/**
+ * Back to the menu from any game: disconnects from the server (which drops our
+ * colonies, as when a tab closes), ends a solo match, and stops spectating.
+ */
+function leaveToMenu(): void {
+  net?.close();
+  net = null;
+  solo = null;
+  clearTimeout(soloRestart);
+  soloRestart = undefined;
+  spectating = false;
+  renderer.spectate = false;
+  input.readOnly = false;
+  input.cancelGestures();
+  centredOn = null;
+  banner.hidden = true;
+  menu.hidden = false;
+  leaveButton.hidden = true;
+}
+leaveButton.addEventListener("click", leaveToMenu);
 
 function connectTo(server: string, name: string): void {
   net = new NetClient(serverUrl(server), name, spectating);

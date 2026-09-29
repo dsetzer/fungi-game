@@ -25,6 +25,24 @@ body {
   pointer-events: none;
 }
 
+#leave {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  border: 1px solid #cfd4da;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #555;
+  cursor: pointer;
+}
+
+#leave[hidden] {
+  display: none;
+}
+
 #help {
   position: fixed;
   bottom: 12px;

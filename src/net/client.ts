@@ -31,11 +31,25 @@ export class NetClient {
 
   private socket: WebSocket | null = null;
   private retry = 0;
+  /** Set by close(): the player left, so stop reconnecting for good. */
+  private stopped = false;
 
   constructor(private url: string, private name: string, private spectate = false) {}
 
+  /**
+   * Leaves the server for good: closes the socket (the server drops our colonies,
+   * as when a tab closes) and stops the reconnect loop.
+   */
+  close(): void {
+    this.stopped = true;
+    this.socket?.close();
+    this.socket = null;
+    this.world = null;
+  }
+
   /** Connects, and keeps trying: servers restart, laptops sleep, wifi drops. */
   connect(): void {
+    if (this.stopped) return;
     let closed = false;
     const dropped = () => {
       if (closed) return;
@@ -43,6 +57,7 @@ export class NetClient {
       this.socket = null;
       this.world = null;
       this.status = "offline";
+      if (this.stopped) return;
       this.onOffline?.();
       // Back off to 8s so a server that's down doesn't get hammered.
       this.retry = Math.min(8000, this.retry ? this.retry * 2 : 1000);

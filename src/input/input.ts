@@ -160,6 +160,13 @@ export class Input {
   /** Spectating: panning and zooming only — no throws, hyphae, walls or cuts. */
   readOnly = false;
 
+  /** Drops any half-made drag or wall, e.g. when leaving a game mid-gesture. */
+  cancelGestures(): void {
+    this.drag = null;
+    this.right = null;
+    this.leftPress = null;
+  }
+
   private onDown = (e: PointerEvent) => {
     this.canvas.setPointerCapture(e.pointerId);
     this.cursor = this.camera.screenToWorld(e.offsetX, e.offsetY);

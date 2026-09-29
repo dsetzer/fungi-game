@@ -46,7 +46,7 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
     bot.defend();
     bot.rescueStarving();
     bot.tapFalls();
-    bot.cutFedChildren();
+    bot.cutCordsWhenOverspending();
     bot.attack();
     bot.expand();
   }
@@ -139,22 +139,29 @@ class Brain {
   }
 
   /**
-   * A thrown colony stays tied to its parent by the hypha the throw grew. Once it
-   * drains a fall of its own it doesn't need the parent: cut the cord, so the
-   * parent stops paying for it and gets the output slot back.
+   * Cords — the hyphae throws grow from parent to child — are kept: they keep the
+   * network connected, so nutrients flow out to the frontier where throwing
+   * happens, and a colony whose falls run dry drains its store forward instead of
+   * sitting stranded. (Cutting every cord once a child fed itself left islands.)
+   * The one cord worth cutting is one that makes a colony overspend: shrinking and
+   * nearly empty, it would soon run dry and die. Then it drops a cord to a child
+   * that has a fall of its own and doesn't need it.
    */
-  cutFedChildren(): void {
+  cutCordsWhenOverspending(): void {
     const fedByFall = new Set<number>();
     for (const p of this.world.pipes.values()) {
       if (p.owner === this.player && this.world.nodes.get(p.from)?.kind === "fall") fedByFall.add(p.to);
     }
-    for (const p of this.world.pipes.values()) {
+    for (const colony of this.mine) {
       if (!this.canAct()) return;
-      if (p.owner !== this.player) continue;
-      const src = this.world.nodes.get(p.from);
-      const dst = this.world.nodes.get(p.to);
-      if (src?.kind !== "colony" || dst?.kind !== "colony" || dst.owner !== this.player) continue;
-      if (fedByFall.has(dst.id)) this.act({ type: "cut", player: this.player, pipe: p.id });
+      if (colony.rate >= 0 || colony.nutrients > 60) continue;
+      for (const p of this.world.pipes.values()) {
+        const child = this.world.nodes.get(p.to);
+        if (p.owner !== this.player || p.from !== colony.id || child?.owner !== this.player) continue;
+        if (!fedByFall.has(child.id)) continue;
+        this.act({ type: "cut", player: this.player, pipe: p.id });
+        break;
+      }
     }
   }
 

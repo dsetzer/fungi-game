@@ -160,9 +160,8 @@ noted.
   fall's outflow past what you feed it, and since falls never respawn, emptying one kills that
   income for the rest of the round. Colony-to-colony transfers are 1:1, so a ring of colonies with
   no fall in it generates nothing.
-- **Attacking:** a hypha draining a *rival* pulls far harder than one moving nutrients inside a
-  network — `attackRate` = 4 + 0.5·√nutrients of the attacking colony, capped at 30/s, against a flat
-  3/s for ordinary lines. Still 1:1: the speed is the weapon, not a multiplier.
+- **Attacking:** a hypha draining a *rival* is an ordinary hypha — the same 3/s as any other,
+  1:1. To drain a colony faster than its owner can feed it, put more hyphae on it (funnelling).
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so
   funnelling and reinforcing always work. The cap counts only hyphae *you* grew, so a rival's
   drain line doesn't spend one of your slots — and a colony that has spent all four is still

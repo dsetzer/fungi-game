@@ -1,5 +1,5 @@
 import {
-  FALL_POOL_CENTER,
+  FALL_POOL_MAX,
   NODE_SPACING,
   SPAWN_CLUSTER_DISTANCE,
   START_NUTRIENTS,
@@ -100,7 +100,7 @@ function seedFoodNear(world: World, p: Vec): void {
     const d = startReach * (0.35 + world.rng() * 0.5);
     const spot = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
     if (!world.isFreeSpot(spot, NODE_SPACING) || !world.hasLineOfSight(p, spot)) continue;
-    world.addFall(spot.x, spot.y, FALL_POOL_CENTER);
+    world.addFall(spot.x, spot.y, Math.round(FALL_POOL_MAX / 2));
     return;
   }
 }

@@ -1,16 +1,18 @@
 import type { BotLevel } from "./bot";
 import {
-  BOOST_COUNT,
+  BOOST_MAX,
   BOOST_MIN_COLONY_DISTANCE,
+  BOOST_MIN_FALL_DISTANCE,
   BOOST_POOL,
-  BOOST_RESPAWN_SECONDS,
+  BOOST_SPAWN_SECONDS,
+  BOOST_START,
   BRANCH_OUT_PIPES,
   DT,
   FLOW_COOLDOWN_SECONDS,
   FLOW_MULTIPLIER,
   FLOW_SECONDS,
   REACH_BONUS,
-  SCISSORS_COOLDOWN_SECONDS,
+  SEVER_COOLDOWN_SECONDS,
   SIM_HZ,
   VISION_BONUS,
   VISION_MIN,
@@ -23,14 +25,17 @@ import {
   FALL_DRAIN_GAIN,
   FALL_CLUSTER_BLOBS_MAX,
   FALL_CLUSTER_BLOBS_MIN,
-  FALL_CLUSTER_SPREAD,
-  FALL_POOL_CENTER,
-  FALL_POOL_EDGE,
+  FALL_CLUSTER_GAP,
+  FALL_CLUSTER_LOOSE_MAX,
+  FALL_CLUSTER_LOOSE_MIN,
+  FALL_CLUSTER_TIGHT_GAP,
+  FALL_CLUSTER_TIGHT_MAX,
+  FALL_POOL_MAX,
+  FALL_POOL_MIN,
   FALLS_PAY_UPKEEP,
   MAX_OUT_PIPES_PER_COLONY,
   NEUTRAL_FALL_CLUSTERS,
   PIPE_RATE_PER_SEC,
-  attackRate,
   PLAYER_COUNT,
   SPAWN_CLUSTER_DISTANCE,
   START_NUTRIENTS,
@@ -89,8 +94,6 @@ export class World {
 
   private nextId = 1;
   private queue: Command[] = [];
-  /** Ticks at which a depleted boost comes back somewhere else (§6.7). */
-  private boostReturns: number[] = [];
   /** Which boosts each player holds; rebuilt lazily after anything changes owner or dies. */
   private held: Map<PlayerId, Set<BoostKind>> | null = null;
   readonly rng: () => number;
@@ -119,7 +122,7 @@ export class World {
       world.addFallCluster(centre, s);
     }
     world.scatterNeutralClusters(NEUTRAL_FALL_CLUSTERS);
-    world.placeBoosts(BOOST_COUNT);
+    world.placeBoosts(BOOST_START);
     return world;
   }
 
@@ -129,7 +132,7 @@ export class World {
     const id = this.players.length + 1;
     const player: Player = {
       id, name, isBot, alive: true, score: 0,
-      abilities: { flowUntil: 0, flowReadyAt: 0, scissorsReadyAt: 0 },
+      abilities: { flowUntil: 0, flowReadyAt: 0, severReadyAt: 0 },
       color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length],
     };
     this.players.push(player);
@@ -156,9 +159,10 @@ export class World {
   }
 
   /**
-   * Scatters boosts (§6.7) on open, reachable ground well away from every colony
-   * and outside anyone's territory, so each is a trip to make and a point to fight
-   * over. The kind is random.
+   * Scatters boosts (§6.7) on open, reachable ground on their own: well away from
+   * every colony and outside anyone's territory, so each is a trip to make and a
+   * point to fight over, and clear of the falls, so none reads as part of a
+   * cluster. The kind is random.
    */
   placeBoosts(count: number): void {
     let placed = 0;
@@ -167,9 +171,10 @@ export class World {
       const d = Math.sqrt(this.rng()) * (this.arena.radius - 120);
       const p = { x: Math.cos(a) * d, y: Math.sin(a) * d };
       if (!this.arena.isReachable(p) || !this.isFreeSpot(p, NODE_SPACING * 2, 0)) continue;
-      const crowded = [...this.nodes.values()].some(
-        (n) => (n.kind === "colony" || n.kind === "boost") && dist(n.x, n.y, p.x, p.y) < BOOST_MIN_COLONY_DISTANCE,
-      );
+      const crowded = [...this.nodes.values()].some((n) => {
+        const d = dist(n.x, n.y, p.x, p.y);
+        return n.kind === "fall" ? d < BOOST_MIN_FALL_DISTANCE : d < BOOST_MIN_COLONY_DISTANCE;
+      });
       const nearSpawn = this.arena.spawns.some((s) => dist(s.x, s.y, p.x, p.y) < BOOST_MIN_COLONY_DISTANCE);
       if (crowded || nearSpawn) continue;
       this.addBoost(p.x, p.y, BOOST_KINDS[Math.floor(this.rng() * BOOST_KINDS.length)]);
@@ -177,28 +182,35 @@ export class World {
     }
   }
   /**
-   * A cluster of nutrient blobs of varying size, biggest toward the middle.
-   * Blobs that would land in a wall or on another node are skipped.
+   * A small, loose group of falls (§6.4): 1–6 of them, of which 1–3 sit right
+   * next to each other at the centre and the rest are scattered around it. Each
+   * fall's size is its own roll, anywhere from a scrap to a feast.
+   *
+   * With `facing` (a spawn), the group has at least three falls and one of the
+   * scattered ones lies toward it, inside starting reach: the first meal.
+   * Falls that would land in a wall or on another node are skipped.
    */
   addFallCluster(centre: Vec, facing?: Vec): GameNode[] {
-    const count =
-      FALL_CLUSTER_BLOBS_MIN +
-      Math.floor(this.rng() * (FALL_CLUSTER_BLOBS_MAX - FALL_CLUSTER_BLOBS_MIN + 1));
+    const roll = (min: number, max: number) => min + Math.floor(this.rng() * (max - min + 1));
+    let count = roll(FALL_CLUSTER_BLOBS_MIN, FALL_CLUSTER_BLOBS_MAX);
+    if (facing) count = Math.max(3, count);
+    // The tight core; a spawn's group always keeps one fall back to aim at it.
+    const tight = Math.min(roll(1, FALL_CLUSTER_TIGHT_MAX), facing ? count - 1 : count);
     const placed: GameNode[] = [];
     for (let i = 0; i < count; i++) {
-      // First blob sits at the centre; the rest spread outward. With `facing`,
-      // the second blob is on the outer edge pointing at it (a spawn's first meal).
-      const aimed = i === 1 && facing !== undefined;
-      const t = i === 0 ? 0 : aimed ? 1 : 0.35 + this.rng() * 0.65;
+      const aimed = facing !== undefined && i === tight;
+      const d =
+        i === 0 ? 0
+        : i < tight ? FALL_CLUSTER_TIGHT_GAP * (0.8 + this.rng() * 0.4)
+        : aimed ? FALL_CLUSTER_LOOSE_MAX * 0.85
+        : FALL_CLUSTER_LOOSE_MIN + this.rng() * (FALL_CLUSTER_LOOSE_MAX - FALL_CLUSTER_LOOSE_MIN);
       const a = aimed
         ? Math.atan2(facing.y - centre.y, facing.x - centre.x) + (this.rng() - 0.5) * 0.6
         : this.rng() * Math.PI * 2;
-      const p = {
-        x: centre.x + Math.cos(a) * t * FALL_CLUSTER_SPREAD,
-        y: centre.y + Math.sin(a) * t * FALL_CLUSTER_SPREAD,
-      };
-      const jitter = 0.8 + this.rng() * 0.4;
-      const pool = Math.round((FALL_POOL_CENTER + (FALL_POOL_EDGE - FALL_POOL_CENTER) * t) * jitter);
+      // Around a tight neighbour rather than the exact centre, so the core is a clump.
+      const from = i > 0 && i < tight ? placed[placed.length - 1] ?? centre : centre;
+      const p = { x: from.x + Math.cos(a) * d, y: from.y + Math.sin(a) * d };
+      const pool = Math.round(FALL_POOL_MIN * (FALL_POOL_MAX / FALL_POOL_MIN) ** this.rng());
       if (this.isFreeSpot(p, NODE_SPACING)) placed.push(this.addFall(p.x, p.y, pool));
     }
     return placed;
@@ -208,12 +220,17 @@ export class World {
     let placed = 0;
     for (let attempt = 0; placed < count && attempt < count * 50; attempt++) {
       const a = this.rng() * Math.PI * 2;
-      const d = Math.sqrt(this.rng()) * (this.arena.radius - FALL_CLUSTER_SPREAD - 40);
+      const d = Math.sqrt(this.rng()) * (this.arena.radius - FALL_CLUSTER_LOOSE_MAX - 40);
       const c = { x: Math.cos(a) * d, y: Math.sin(a) * d };
       // Keep neutral clusters away from spawns so each player's home cluster is theirs.
       const nearSpawn = this.arena.spawns.some(
         (s) => dist(s.x, s.y, c.x, c.y) < SPAWN_CLUSTER_DISTANCE * 2.5,
       );
+      // Groups stay apart: two side by side would read as one big clump.
+      const crowded = [...this.nodes.values()].some(
+        (n) => n.kind === "fall" && dist(n.x, n.y, c.x, c.y) < FALL_CLUSTER_GAP,
+      );
+      if (crowded) continue;
       // Skip pockets walled off from the main cave system — nobody could ever reach them.
       if (!nearSpawn && this.arena.isReachable(c) && this.isFreeSpot(c, NODE_SPACING * 2)) {
         this.addFallCluster(c);
@@ -236,8 +253,12 @@ export class World {
     return NODE_CORE_RADIUS;
   }
 
-  /** Visual size of the fluid area around a node — grows with its nutrients. */
+  /**
+   * Visual size of the fluid area around a node — grows with its nutrients. A
+   * boost has none: it is a marker on the map, not ground anyone holds.
+   */
   auraOf(n: GameNode): number {
+    if (n.kind === "boost") return 0;
     return n.kind === "colony" ? colonyAura(n.nutrients) : fallAura(n.nutrients);
   }
 
@@ -296,10 +317,10 @@ export class World {
     return YES;
   }
 
-  canScissors(player: PlayerId, pipeId: EntityId): CheckResult {
+  canSever(player: PlayerId, pipeId: EntityId): CheckResult {
     const p = this.player(player);
-    if (!p || !this.holds(player, "scissors")) return NO("you don't hold Scissors");
-    if (this.tick < p.abilities.scissorsReadyAt) return NO("Scissors is recharging");
+    if (!p || !this.holds(player, "sever")) return NO("you don't hold Sever");
+    if (this.tick < p.abilities.severReadyAt) return NO("Sever is recharging");
     if (!this.pipes.has(pipeId)) return NO("no such hypha");
     return YES;
   }
@@ -559,10 +580,10 @@ export class World {
         a.flowReadyAt = a.flowUntil + FLOW_COOLDOWN_SECONDS * SIM_HZ;
         return;
       }
-      case "scissors": {
-        if (!this.canScissors(cmd.player, cmd.pipe).ok) return;
+      case "sever": {
+        if (!this.canSever(cmd.player, cmd.pipe).ok) return;
         this.pipes.delete(cmd.pipe);
-        this.player(cmd.player)!.abilities.scissorsReadyAt = this.tick + SCISSORS_COOLDOWN_SECONDS * SIM_HZ;
+        this.player(cmd.player)!.abilities.severReadyAt = this.tick + SEVER_COOLDOWN_SECONDS * SIM_HZ;
         return;
       }
     }
@@ -596,7 +617,7 @@ export class World {
     this.captureBoosts();
     this.removeDead();
     this.updatePlayers();
-    this.returnBoosts();
+    this.spawnBoosts();
   }
 
   /**
@@ -613,32 +634,25 @@ export class World {
     }
   }
 
-  /** Depleted boosts come back after a while, somewhere else, as any kind. */
-  private returnBoosts(): void {
-    const due = this.boostReturns.filter((t) => t <= this.tick).length;
-    if (due === 0) return;
-    this.boostReturns = this.boostReturns.filter((t) => t > this.tick);
-    this.placeBoosts(due);
+  /** Boosts keep appearing through the round, somewhere random, up to a cap. */
+  private spawnBoosts(): void {
+    if (this.tick % (BOOST_SPAWN_SECONDS * SIM_HZ) !== 0) return;
+    let count = 0;
+    for (const n of this.nodes.values()) if (n.kind === "boost") count++;
+    if (count < BOOST_MAX) this.placeBoosts(1);
   }
 
   private flowAndUpkeep(): void {
     const delta = new Map<EntityId, number>();
     const add = (id: EntityId, v: number) => delta.set(id, (delta.get(id) ?? 0) + v);
 
-    // Every hypha has its own rate. Moving nutrients inside a network, or tapping a
-    // fall, runs at the flat pipe rate; a hypha draining a *rival* runs at the
-    // attacking colony's attack rate, which is much faster and grows with the
-    // attacker's strength — that is what makes killing a player possible.
+    // Every hypha runs at the same rate, whatever it draws from — a fall, your own
+    // colony or a rival's (§6.3). Flow (§6.7) doubles every hypha its holder grew.
     const rateOf = new Map<EntityId, number>();
     const demandOf = new Map<EntityId, number>();
     for (const p of this.pipes.values()) {
-      const src = this.nodes.get(p.from)!;
-      const dst = this.nodes.get(p.to)!;
-      const attack =
-        src.kind === "colony" && src.owner != null && dst.owner != null && dst.owner !== src.owner;
-      // Flow (§6.7) doubles every hypha its holder grew — gathering, feeding and attacking alike.
       const boosted = this.flowActive(p.owner) ? FLOW_MULTIPLIER : 1;
-      const r = (attack ? attackRate(dst.nutrients) : PIPE_RATE_PER_SEC) * DT * boosted;
+      const r = PIPE_RATE_PER_SEC * DT * boosted;
       rateOf.set(p.id, r);
       demandOf.set(p.from, (demandOf.get(p.from) ?? 0) + r);
     }
@@ -695,10 +709,7 @@ export class World {
     for (const n of this.nodes.values()) {
       if (n.nutrients > 0) continue;
       this.nodes.delete(n.id);
-      if (n.kind === "boost") {
-        this.boostReturns.push(this.tick + BOOST_RESPAWN_SECONDS * SIM_HZ);
-        this.boostsChanged();
-      }
+      if (n.kind === "boost") this.boostsChanged();
       for (const p of this.pipes.values()) {
         if (p.from === n.id || p.to === n.id) this.pipes.delete(p.id);
       }

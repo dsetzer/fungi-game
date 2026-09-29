@@ -30,19 +30,23 @@ describe("bots", () => {
     expect(Math.max(...colonies.map((c) => c.x))).toBeGreaterThan(200); // headed for the fall
   });
 
-  it("act no faster than their level allows", () => {
+  it("act one thing at a time, no faster than their level allows", () => {
     for (const level of ["easy", "hard"] as const) {
       const { world, bot } = botWorld();
       world.addColony(bot.id, 0, 0, 500);
       for (let i = 0; i < 30; i++) world.addFall(Math.cos(i) * 200, Math.sin(i) * 200, 200);
-      let commands = 0;
+      const ticks: number[] = [];
       const enqueue = world.enqueue.bind(world);
-      world.enqueue = (cmd) => { commands++; enqueue(cmd); };
+      world.enqueue = (cmd) => { ticks.push(world.tick); enqueue(cmd); };
       const seconds = 10;
-      const { thinkSeconds, actionsPerSecond } = BOT_LEVELS[level];
-      for (let t = 0; t < seconds; t += thinkSeconds) runBot(world, bot.id, level);
-      // A small starting burst, then the level's rate.
-      expect(commands, level).toBeLessThanOrEqual(3 + actionsPerSecond * seconds);
+      // Asked every tick, far more often than it thinks in a match.
+      for (let t = 0; t < seconds * SIM_HZ; t++) {
+        runBot(world, bot.id, level);
+        world.step();
+      }
+      const gap = SIM_HZ / BOT_LEVELS[level].actionsPerSecond;
+      expect(ticks.length, level).toBeLessThanOrEqual(BOT_LEVELS[level].actionsPerSecond * seconds + 1);
+      for (let i = 1; i < ticks.length; i++) expect(ticks[i] - ticks[i - 1], level).toBeGreaterThanOrEqual(gap);
     }
   });
 });

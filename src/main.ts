@@ -131,7 +131,7 @@ for (const kind of BOOST_KINDS) {
   const hotkey = HOTKEY[kind];
   const el = document.createElement(hotkey ? "button" : "span");
   el.hidden = true;
-  if (hotkey) el.addEventListener("click", () => input.fire(kind as "flow" | "scissors"));
+  if (hotkey) el.addEventListener("click", () => input.fire(kind as "flow" | "sever"));
   abilityBar.append(el);
   boostSlots.set(kind, el);
 }
@@ -156,11 +156,11 @@ function updateAbilities(): void {
     if (kind === "flow" && world.flowActive(me)) {
       state = ` · ${secs(abilities.flowUntil)}s`;
       on = true;
-    } else if (kind === "scissors" && input.armed === "scissors") {
+    } else if (kind === "sever" && input.armed === "sever") {
       state = " · pick a hypha";
       on = true;
     } else {
-      const ready = kind === "flow" ? abilities.flowReadyAt : abilities.scissorsReadyAt;
+      const ready = kind === "flow" ? abilities.flowReadyAt : abilities.severReadyAt;
       if (ready > world.tick) state = ` · ${secs(ready)}s`;
     }
     const button = el as HTMLButtonElement;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  BOOST_RESPAWN_SECONDS,
+  BOOST_MAX,
+  BOOST_SPAWN_SECONDS,
   BRANCH_OUT_PIPES,
   FALL_DRAIN_GAIN,
   FLOW_COOLDOWN_SECONDS,
@@ -8,7 +9,7 @@ import {
   MAX_OUT_PIPES_PER_COLONY,
   PIPE_RATE_PER_SEC,
   REACH_BONUS,
-  SCISSORS_COOLDOWN_SECONDS,
+  SEVER_COOLDOWN_SECONDS,
   SIM_HZ,
   reach,
 } from "../src/config";
@@ -82,17 +83,18 @@ describe("boosts", () => {
     expect(held.nutrients).toBeCloseTo(was - 2);
   });
 
-  it("come back somewhere else after being depleted", () => {
+  it("keep appearing through the round, up to a cap, away from falls", () => {
     const { world } = twoPlayers();
-    const boost = world.addBoost(0, 0, "flow", 1);
-    boost.owner = 1;
-    world.boostsChanged();
-    runSeconds(world, 2);
-    expect([...world.nodes.values()].some((n) => n.kind === "boost")).toBe(false);
-    runSeconds(world, BOOST_RESPAWN_SECONDS);
-    const back = [...world.nodes.values()].filter((n) => n.kind === "boost");
-    expect(back.length).toBe(1);
-    expect(back[0].owner).toBeNull();
+    world.addFall(0, 0, 500);
+    const boosts = () => [...world.nodes.values()].filter((n) => n.kind === "boost");
+    runSeconds(world, BOOST_SPAWN_SECONDS);
+    expect(boosts().length).toBe(1);
+    runSeconds(world, BOOST_SPAWN_SECONDS * (BOOST_MAX + 3));
+    expect(boosts().length).toBe(BOOST_MAX);
+    for (const b of boosts()) {
+      expect(b.owner).toBeNull();
+      expect(Math.hypot(b.x, b.y)).toBeGreaterThan(300);
+    }
   });
 
   it("go neutral when their holder is wiped out", () => {
@@ -157,24 +159,24 @@ describe("boosts", () => {
     expect(world.canFlow(me.id).ok).toBe(true);
   });
 
-  it("Scissors cuts anyone's hypha, then recharges", () => {
+  it("Sever cuts anyone's hypha, then recharges", () => {
     const { world, me, rival } = twoPlayers();
     const theirs = world.addColony(rival.id, 0, 0, 500);
     const other = world.addColony(rival.id, 200, 0, 500);
     world.enqueue({ type: "connect", player: rival.id, from: theirs.id, to: other.id });
     world.step();
     const pipe = world.pipeBetween(theirs.id, other.id)!;
-    expect(world.canScissors(me.id, pipe.id).ok).toBe(false); // not held
-    holding(world, me.id, "scissors", { x: 0, y: 600 });
-    world.enqueue({ type: "scissors", player: me.id, pipe: pipe.id });
+    expect(world.canSever(me.id, pipe.id).ok).toBe(false); // not held
+    holding(world, me.id, "sever", { x: 0, y: 600 });
+    world.enqueue({ type: "sever", player: me.id, pipe: pipe.id });
     world.step();
     expect(world.pipes.has(pipe.id)).toBe(false);
     world.enqueue({ type: "connect", player: rival.id, from: theirs.id, to: other.id });
     world.step();
     const again = world.pipeBetween(theirs.id, other.id)!;
-    expect(world.canScissors(me.id, again.id)).toEqual({ ok: false, reason: "Scissors is recharging" });
-    runSeconds(world, SCISSORS_COOLDOWN_SECONDS);
-    expect(world.canScissors(me.id, again.id).ok).toBe(true);
+    expect(world.canSever(me.id, again.id)).toEqual({ ok: false, reason: "Sever is recharging" });
+    runSeconds(world, SEVER_COOLDOWN_SECONDS);
+    expect(world.canSever(me.id, again.id).ok).toBe(true);
   });
 
   it("are placed with a new match, away from every spawn", () => {

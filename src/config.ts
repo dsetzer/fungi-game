@@ -41,35 +41,27 @@ export const FALL_DRAIN_GAIN = FALL_YIELD_PER_SEC / PIPE_RATE_PER_SEC;
 // so a developed hub can still be attacked (and can still expand while under attack).
 export const MAX_OUT_PIPES_PER_COLONY = 4;
 
-// Attacking. Draining a rival is how you eliminate them, so an attack line pulls
-// far harder than the flat rate at which nutrients move inside a network, and it
-// pulls harder the stronger the attacking colony is. Three colonies on one victim
-// must out-pace anything the victim can feed itself, or the drain does nothing but
-// slow their growth. What the attacker takes is what the victim loses, 1:1 — the
-// speed is the weapon, not a multiplier.
-export const ATTACK_RATE_BASE = 4;
-export const ATTACK_RATE_SCALE = 0.5;
-export const ATTACK_RATE_MAX = 30;
-/** Nutrients per second one attacking colony rips out of a rival. */
-export function attackRate(attackerNutrients: number): number {
-  const scaled = ATTACK_RATE_BASE + Math.sqrt(Math.max(0, attackerNutrients)) * ATTACK_RATE_SCALE;
-  return Math.min(ATTACK_RATE_MAX, scaled);
-}
+// Every hypha runs at PIPE_RATE_PER_SEC, whatever it draws from: a fall, your own
+// colony or a rival's. Draining a rival is no special case — it takes what it
+// takes, 1:1, and pulling harder means more hyphae on the target (§6.3 funnelling).
 
 // §6.7 Boosts — capture points: feed one to own it, keep it fed to hold it.
 // Starting numbers, all to be tuned in play.
-export const BOOST_COUNT = 3; // on the map at once
+export const BOOST_START = 2; // on the map when a round begins
+export const BOOST_MAX = 5; // never more than this on the map at once
+export const BOOST_SPAWN_SECONDS = 40; // a new one appears this often, anywhere open
 export const BOOST_POOL = 400; // a fresh boost's store
-export const BOOST_RESPAWN_SECONDS = 60; // a depleted one returns this long after, elsewhere
 /** Keeps boosts off the doorstep of a spawn or a colony, so they are worth a trip. */
 export const BOOST_MIN_COLONY_DISTANCE = 700;
+/** Boosts stand on their own ground, never among a fall cluster. */
+export const BOOST_MIN_FALL_DISTANCE = 350;
 export const BRANCH_OUT_PIPES = 8; // Branch: output slots per colony (normally 4)
 export const REACH_BONUS = 200; // Reach: added to every colony's reach (cap 600 → 800)
 export const VISION_BONUS = 1.5; // Vision: view radius multiplier
 export const FLOW_MULTIPLIER = 2; // Flow: every hypha of yours carries this many times its rate
 export const FLOW_SECONDS = 10;
 export const FLOW_COOLDOWN_SECONDS = 45; // counted from when Flow ends
-export const SCISSORS_COOLDOWN_SECONDS = 30;
+export const SEVER_COOLDOWN_SECONDS = 30;
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
 export const WALL_BAR_LENGTH = 170;
@@ -81,13 +73,19 @@ export const MAX_WALLS_PER_COLONY = 3;
 // across it, and that is all it does.
 export const WALLS_CUT_EXISTING_PIPES = false;
 
-// §6.4 Nutrient falls — spawned as clusters of blobs, biggest in the middle
-export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one cluster per spawn
-export const FALL_CLUSTER_BLOBS_MIN = 4;
-export const FALL_CLUSTER_BLOBS_MAX = 8;
-export const FALL_CLUSTER_SPREAD = 160; // max blob distance from cluster centre
-export const FALL_POOL_CENTER = 900; // pool of a blob at the cluster centre
-export const FALL_POOL_EDGE = 120; // pool of a blob at the cluster's outer edge
+// §6.4 Nutrient falls — small, loose groups: 1–6 falls, of which only 1–3 sit
+// right next to each other and the rest are scattered around. Sizes vary wildly
+// and have nothing to do with position, so no two groups look alike.
+export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one group per spawn
+export const FALL_CLUSTER_BLOBS_MIN = 1;
+export const FALL_CLUSTER_BLOBS_MAX = 6;
+export const FALL_CLUSTER_TIGHT_MAX = 3; // falls packed right next to each other
+export const FALL_CLUSTER_TIGHT_GAP = 45; // between those
+export const FALL_CLUSTER_LOOSE_MIN = 150; // the rest: this far from the group's centre…
+export const FALL_CLUSTER_LOOSE_MAX = 350; // …up to this
+export const FALL_CLUSTER_GAP = 700; // group centres never closer than this to another fall
+export const FALL_POOL_MIN = 60; // pools are spread evenly between these on a log scale:
+export const FALL_POOL_MAX = 1200; // as many small ones as middling, a few rich
 export const SPAWN_CLUSTER_DISTANCE = 500; // spawn → its cluster centre (just beyond start reach)
 export const FALLS_PAY_UPKEEP = false; // open design question
 

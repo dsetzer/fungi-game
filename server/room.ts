@@ -1,5 +1,5 @@
 import {
-  BOOST_COUNT,
+  BOOST_START,
   INTERMISSION_SECONDS,
   ROUND_SECONDS,
   SIM_HZ,
@@ -78,7 +78,7 @@ export class Room {
     const radius = radiusForPlayers(this.arenaPlayers);
     this.world = new World(generateArena(this.seed, this.arenaPlayers, radius), this.seed);
     this.world.endOnLastStanding = false;
-    this.world.placeBoosts(BOOST_COUNT);
+    this.world.placeBoosts(BOOST_START);
     this.ticksLeft = ROUND_SECONDS * SIM_HZ;
     this.intermission = false;
 
@@ -209,6 +209,6 @@ function toPlayerDTO(p: Player): PlayerDTO {
   const a = p.abilities;
   return {
     id: p.id, name: p.name, color: p.color, score: Math.round(p.score), alive: p.alive,
-    fu: a.flowUntil, fr: a.flowReadyAt, sr: a.scissorsReadyAt,
+    fu: a.flowUntil, fr: a.flowReadyAt, sr: a.severReadyAt,
   };
 }

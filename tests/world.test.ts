@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  ATTACK_RATE_BASE,
   DT,
   EJECT_FRACTION_DEFAULT,
   EJECT_MIN_AMOUNT,
@@ -14,7 +13,6 @@ import {
   START_NUTRIENTS,
   UPKEEP_PER_SEC,
   WALL_COST,
-  attackRate,
   reach,
 } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
@@ -600,7 +598,7 @@ describe("match", () => {
     }
   });
 
-  it("gives every spawn a fall in starting reach and a richer one just beyond", () => {
+  it("gives every spawn a fall in starting reach", () => {
     for (let seed = 1; seed <= 30; seed++) {
       const world = World.createMatch(seed);
       const falls = [...world.nodes.values()].filter((n) => n.kind === "fall");
@@ -610,9 +608,6 @@ describe("match", () => {
           (f) => dist(home.x, home.y, f.x, f.y) <= startReach && world.hasLineOfSight(home, f),
         );
         expect(inReach.length, `seed ${seed} player ${home.owner}`).toBeGreaterThan(0);
-        const bestInReach = Math.max(...inReach.map((f) => f.nutrients));
-        const nearby = falls.filter((f) => dist(home.x, home.y, f.x, f.y) <= startReach * 1.6);
-        expect(Math.max(...nearby.map((f) => f.nutrients))).toBeGreaterThan(bestInReach);
       }
     }
   });
@@ -630,16 +625,14 @@ describe("draining a rival", () => {
     return { world, me, foe, attacker, victim };
   }
 
-  it("pulls at the attacker's attack rate, not the flat pipe rate", () => {
+  it("pulls at the same rate as any other hypha", () => {
     const { world, me, attacker, victim } = duel(100, 500);
-    const rate = attackRate(100);
-    expect(rate).toBeGreaterThan(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN); // worth doing at all
     world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
-    world.step(); // the command lands and one tick flows, both at the starting stores
+    world.step(); // the command lands and one tick flows
     // The victim pays upkeep too: nothing is feeding it. The attacker has inflow
     // and sends nothing on, so it is sustained and pays none.
-    expect(victim.nutrients).toBeCloseTo(500 - (rate + UPKEEP_PER_SEC) * DT, 6);
-    expect(attacker.nutrients).toBeCloseTo(100 + rate * DT, 6);
+    expect(victim.nutrients).toBeCloseTo(500 - (PIPE_RATE_PER_SEC + UPKEEP_PER_SEC) * DT, 6);
+    expect(attacker.nutrients).toBeCloseTo(100 + PIPE_RATE_PER_SEC * DT, 6);
   });
 
   it("takes exactly what the victim loses — attacking can't print nutrients", () => {
@@ -652,20 +645,17 @@ describe("draining a rival", () => {
     expect(attacker.nutrients + victim.nutrients).toBeCloseTo(before - UPKEEP_PER_SEC * 5, 4);
   });
 
-  it("out-paces a victim living off a fall, and kills it", () => {
-    const { world, me, attacker, victim } = duel(100, 400);
+  it("kills a victim when more hyphae drain it than feed it", () => {
+    const { world, me, attacker, victim } = duel(100, 200);
+    const second = world.addColony(me.id, 200, 200, 100);
     const fall = world.addFall(400, 0, 100_000);
     world.enqueue({ type: "connect", player: 2, from: fall.id, to: victim.id });
     world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: second.id });
     world.step();
-    expect(attackRate(attacker.nutrients)).toBeGreaterThan(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN);
+    // Two drains (6/s) against one fall line (4/s in): a net loss of 2/s.
     runSeconds(world, 120);
     expect(world.nodes.has(victim.id)).toBe(false);
-  });
-
-  it("scales with the attacker: a bigger colony rips harder", () => {
-    expect(attackRate(900)).toBeGreaterThan(attackRate(100));
-    expect(attackRate(0)).toBeCloseTo(ATTACK_RATE_BASE);
   });
 
   it("can attack a colony that has spent all its own output slots", () => {

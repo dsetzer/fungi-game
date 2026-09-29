@@ -187,6 +187,7 @@ function collectBalls(
   const out: Ball[] = [];
   const k = camera.zoom * scale;
   for (const n of world.nodes.values()) {
+    if (n.kind === "boost") continue; // a marker, not ground
     const layer = n.owner == null ? 0 : layerOf(n.owner);
     if (layer >= MAX_LAYERS || !shown(n.id)) continue;
     const grow = scaleOf(n.id); // a forming colony's territory swells in with it

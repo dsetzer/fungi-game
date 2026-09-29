@@ -8,8 +8,8 @@ import type { Camera } from "../render/camera";
 import { distToSegmentSq, type Vec } from "../sim/geometry";
 import type { Command, EntityId, GameNode, PlayerId } from "../sim/types";
 
-/** Activated boosts (§6.7), in hotkey order: 1 = Scissors, 2 = Flow. */
-export const ABILITY_KEYS = { "1": "scissors", "2": "flow" } as const;
+/** Activated boosts (§6.7), in hotkey order: 1 = Sever, 2 = Flow. */
+export const ABILITY_KEYS = { "1": "sever", "2": "flow" } as const;
 export type Ability = (typeof ABILITY_KEYS)[keyof typeof ABILITY_KEYS];
 import type { World } from "../sim/world";
 
@@ -41,7 +41,7 @@ interface RightPress {
  * Left-drag from any node: release on a node = connect, on empty space = eject.
  * Right-drag from your colony = wall (stem + crossbar at release point).
  * Right-drag elsewhere / WASD = pan. Right-click a wall/hypha = demolish/cut. Wheel = zoom.
- * 1 / 2 = Scissors / Flow, when held: Scissors arms, and the next left-click on
+ * 1 / 2 = Sever / Flow, when held: Sever arms, and the next left-click on
  * any hypha cuts it; Esc or a right-click disarms.
  */
 export class Input {
@@ -51,8 +51,8 @@ export class Input {
   hoverWall: EntityId | null = null;
   /** Share of the parent carried by the next throw; the wheel adjusts it mid-drag. */
   ejectFraction = EJECT_FRACTION_DEFAULT;
-  /** Scissors armed: the next left-click on a hypha cuts it (§6.7). */
-  armed: "scissors" | null = null;
+  /** Sever armed: the next left-click on a hypha cuts it (§6.7). */
+  armed: "sever" | null = null;
 
   private keys = new Set<string>();
   private right: RightPress | null = null;
@@ -83,7 +83,7 @@ export class Input {
   }
 
   /**
-   * An ability button or hotkey: Flow fires at once; Scissors arms (or disarms,
+   * An ability button or hotkey: Flow fires at once; Sever arms (or disarms,
    * pressed again) and waits for a click on a hypha.
    */
   fire(ability: Ability): void {
@@ -94,8 +94,8 @@ export class Input {
       if (world.canFlow(player).ok) this.send({ type: "flow", player });
       return;
     }
-    const ready = world.holds(player, "scissors") && world.tick >= (world.player(player)?.abilities.scissorsReadyAt ?? Infinity);
-    this.armed = this.armed === "scissors" || !ready ? null : "scissors";
+    const ready = world.holds(player, "sever") && world.tick >= (world.player(player)?.abilities.severReadyAt ?? Infinity);
+    this.armed = this.armed === "sever" || !ready ? null : "sever";
   }
 
   /** Colony a wall is being dragged from, once the right-drag has actually moved. */
@@ -251,8 +251,8 @@ export class Input {
       // A left-click that isn't a drag: clicking a hypha flips which way it flows.
       const moved = Math.hypot(e.offsetX - this.leftPress.sx, e.offsetY - this.leftPress.sy);
       const pipe = moved <= CLICK_SLOP ? this.pipeAt(this.cursor) : null;
-      if (pipe != null && this.armed === "scissors") {
-        this.send({ type: "scissors", player, pipe });
+      if (pipe != null && this.armed === "sever") {
+        this.send({ type: "sever", player, pipe });
         this.armed = null;
       } else if (pipe != null) {
         this.send({ type: "reverse", player, pipe });

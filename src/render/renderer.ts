@@ -15,6 +15,7 @@ const COLORS = {
   wallFill: "#eef0f3",
   floor: "#ffffff",
   fallCore: "#6f7177",
+  boost: "#e0a100",
   fog: "#c9ced4",
   reachRing: "#00000066",
   valid: "#2f9e44",
@@ -24,7 +25,7 @@ const COLORS = {
 
 const DEATH_WARN_SECONDS = 20;
 export const BOOST_NAMES: Record<BoostKind, string> = {
-  branch: "Branch", reach: "Reach", vision: "Vision", flow: "Flow", scissors: "Scissors",
+  branch: "Branch", reach: "Reach", vision: "Vision", flow: "Flow", sever: "Sever",
 };
 /** Hypha chevrons: gap between them, and how fast they crawl, in screen pixels. */
 const CHEVRON_GAP_PX = 10;
@@ -105,7 +106,7 @@ export class Renderer {
     for (const p of world.pipes.values()) {
       if (!shown(p.from) || !shown(p.to)) continue;
       const hovered = p.id === input.hoverPipe;
-      this.drawPipe(world, p, timeMs, hovered, hovered && input.armed === "scissors");
+      this.drawPipe(world, p, timeMs, hovered, hovered && input.armed === "sever");
     }
     const hovered = input.nodeAt(input.cursor);
     // Hovering your own colony shows how far it can reach right now.
@@ -117,7 +118,7 @@ export class Renderer {
     }
     this.drawDragPreview(world, input, player);
     this.drawWallPreview(world, input, player);
-    if (input.armed === "scissors") this.drawHint("Scissors: click any hypha to cut it", input.cursor);
+    if (input.armed === "sever") this.drawHint("Sever: click any hypha to cut it", input.cursor);
     const tEntities = performance.now();
     if (!this.spectate) fog.draw(ctx, camera, COLORS.fog);
     const tEnd = performance.now();
@@ -349,33 +350,85 @@ export class Renderer {
   }
 
   /**
-   * A boost (§6.7) is a diamond rather than a dot, grey until captured and then
-   * in its holder's colour, with its name under it so it is worth the trip before
-   * you get there.
+   * A boost (§6.7) is its own thing, not a fall: a gold disc with a white icon
+   * for its kind, as the original marks boosts. Once captured the disc takes its
+   * holder's colour — the icon alone says it's a boost. It never shrinks below a
+   * readable size on screen.
    */
   private drawBoost(n: GameNode, r: number, color: string, hovered: boolean): void {
     const { ctx } = this;
-    const s = r * 1.8;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(n.x, n.y - s);
-    ctx.lineTo(n.x + s, n.y);
-    ctx.lineTo(n.x, n.y + s);
-    ctx.lineTo(n.x - s, n.y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    if (n.owner != null) this.drawDeathRing(n, s);
     const zoom = this.camera.zoom;
-    const name = n.boost ? BOOST_NAMES[n.boost] : "Boost";
-    ctx.fillStyle = "#333";
-    ctx.font = `600 ${12 / zoom}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    const label = hovered ? `${name} · ${Math.floor(n.nutrients)}` : name;
-    ctx.fillText(label, n.x, n.y + s + 5 / zoom);
+    const s = Math.max(r * 1.7, 11 / zoom);
+    ctx.fillStyle = n.owner == null ? COLORS.boost : color;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, s, 0, Math.PI * 2);
+    ctx.fill();
+    if (n.boost) this.drawBoostIcon(n.boost, n.x, n.y, s * 0.55);
+    if (n.owner != null) this.drawDeathRing(n, s + 2 / zoom);
+    if (hovered) {
+      ctx.fillStyle = "#222";
+      ctx.font = `${13 / zoom}px system-ui, sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const name = n.boost ? BOOST_NAMES[n.boost] : "Boost";
+      ctx.fillText(`${name} · ${Math.floor(n.nutrients)}`, n.x + s + 6 / zoom, n.y);
+    }
+  }
+
+  /** White line icons, drawn within a box of half-size `u` around (x, y). */
+  private drawBoostIcon(kind: BoostKind, x: number, y: number, u: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = u * 0.28;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    switch (kind) {
+      case "branch": // a fork: one stem, two arms
+        ctx.moveTo(0, u);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(-u * 0.75, -u * 0.8);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(u * 0.75, -u * 0.8);
+        break;
+      case "reach": // an arrow reaching outward
+        ctx.moveTo(-u * 0.8, u * 0.8);
+        ctx.lineTo(u * 0.8, -u * 0.8);
+        ctx.moveTo(u * 0.05, -u * 0.8);
+        ctx.lineTo(u * 0.8, -u * 0.8);
+        ctx.lineTo(u * 0.8, -u * 0.05);
+        break;
+      case "vision": // an eye
+        ctx.moveTo(-u, 0);
+        ctx.quadraticCurveTo(0, -u * 1.1, u, 0);
+        ctx.quadraticCurveTo(0, u * 1.1, -u, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, u * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      case "flow": // double chevrons, the way hyphae point
+        for (const dx of [-u * 0.45, u * 0.35]) {
+          ctx.moveTo(dx - u * 0.35, -u * 0.7);
+          ctx.lineTo(dx + u * 0.3, 0);
+          ctx.lineTo(dx - u * 0.35, u * 0.7);
+        }
+        break;
+      case "sever": // a line, cut through
+        ctx.moveTo(-u, u * 0.1);
+        ctx.lineTo(-u * 0.25, u * 0.1);
+        ctx.moveTo(u * 0.25, -u * 0.1);
+        ctx.lineTo(u, -u * 0.1);
+        ctx.moveTo(-u * 0.35, u * 0.85);
+        ctx.lineTo(u * 0.35, -u * 0.85);
+        break;
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** Fluid areas (metaballs), rendered in screen space and composited here. */

@@ -18,18 +18,18 @@ export interface Abilities {
   flowUntil: number;
   /** First tick Flow may be fired again. */
   flowReadyAt: number;
-  /** First tick Scissors may cut again. */
-  scissorsReadyAt: number;
+  /** First tick Sever may cut again. */
+  severReadyAt: number;
 }
 
 export type NodeKind = "colony" | "fall" | "boost";
 
 /**
  * Boosts (§6.7): capture points drawn like falls. Branch, Reach and Vision are
- * passive while held; Flow and Scissors are abilities the holder fires.
+ * passive while held; Flow and Sever are abilities the holder fires.
  */
-export type BoostKind = "branch" | "reach" | "vision" | "flow" | "scissors";
-export const BOOST_KINDS: readonly BoostKind[] = ["branch", "reach", "vision", "scissors", "flow"];
+export type BoostKind = "branch" | "reach" | "vision" | "flow" | "sever";
+export const BOOST_KINDS: readonly BoostKind[] = ["branch", "reach", "vision", "sever", "flow"];
 
 export interface GameNode {
   id: EntityId;
@@ -91,7 +91,7 @@ export type Command =
   | { type: "demolish"; player: PlayerId; wall: EntityId }
   /** Fire Flow: every hypha of yours carries double for a while (§6.7). */
   | { type: "flow"; player: PlayerId }
-  /** Scissors: cut any hypha on the map, whoever grew it (§6.7). */
-  | { type: "scissors"; player: PlayerId; pipe: EntityId };
+  /** Sever: cut any hypha on the map, whoever grew it (§6.7). */
+  | { type: "sever"; player: PlayerId; pipe: EntityId };
 
 export type CheckResult = { ok: true } | { ok: false; reason: string };

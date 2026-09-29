@@ -140,7 +140,8 @@ A boost is a **king-of-the-hill capture point**. It sits on the map as a neutral
 - **Capturing:** feed nutrients *into* it. It changes colour to yours and becomes an ordinary node of your network — yours in the same sense your colonies are, with the same upkeep, the same vulnerability to being drained, and the same rules about what it can connect to.
 - **Holding:** its ability is active while you hold it, paid for by keeping it fed. Because it is now a normal node, a rival takes it the same way they take anything else — drain it faster than its owner feeds it.
 - **Dying:** when its pool hits zero it is gone, exactly like any other node of yours that gets starved out.
-- **Respawning:** unlike falls (Section 6.4), boosts come back during a round. They are recurring contested objectives rather than a finite resource, which is what makes them worth fighting over repeatedly instead of once.
+- **Spawning:** unlike falls (Section 6.4), boosts keep appearing through a round, one at a time at random open spots on their own — never among falls or near colonies. They are recurring contested objectives rather than a finite resource, which is what makes them worth fighting over repeatedly instead of once.
+- **Look:** a boost is not a fall and doesn't look like one: a gold disc with a white icon for its kind, and no territory. Captured, the disc takes its holder's colour and keeps the icon.
 
 The economics follow from that: holding a boost costs throughput every second, so a player sitting on several is spending real economy and is correspondingly thin elsewhere.
 
@@ -148,7 +149,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 **A passive boost may only add options, never change what an existing network is already doing.** Extra range, extra outputs and a wider view leave a built network behaving exactly as before; the player chooses whether to use them, and losing the boost takes the option away without rebalancing anything. A boost that sped up every hypha fails this test: colonies set up for the normal rate would start bleeding, and losing it would rebalance the whole network under the player.
 
-**Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey. Scissors arms a single cut and goes on cooldown once it's made; Flow takes effect at once and goes on cooldown when it ends. It stays usable for as long as the boost is held.
+**Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey. Sever arms a single cut and goes on cooldown once it's made; Flow takes effect at once and goes on cooldown when it ends. It stays usable for as long as the boost is held.
 
 ### The base list
 
@@ -158,7 +159,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 | **Reach** | Passive | Every colony's ejection and hypha reach increases. | Line of sight still applies, so enclaves and chokepoints are unaffected. The bonus is always on, so it should be well under the +100% considered for a one-shot version. |
 | **Vision** | Passive | A larger view radius for everything you own. | |
 | **Flow** | Activated | Every hypha you own carries double its rate for a while. | Not a passive boost, because a permanent speed-up would rebalance networks built for the normal rate. As a timed burst nothing breaks: each colony's hypha income and spend double together while upkeep stays flat, so balanced colonies stay balanced, surplus doubles, falls empty sooner but yield the same total, and your drain lines on rivals pull twice as hard — an attack window. |
-| **Scissors** | Activated | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Scissors cuts *any* hypha on the map, owned by anyone, attached to anyone — the answer to being drained by someone out of reach. The cooldown is what pays for that. |
+| **Sever** | Activated | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Sever cuts *any* hypha on the map, owned by anyone, attached to anyone — the answer to being drained by someone out of reach. The cooldown is what pays for that. |
 
 **On hold** — liked, but parked to keep the first version simple:
 
@@ -173,7 +174,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 - It travels visibly, roughly a third of a second per hop, and each colony swells as the pulse arrives.
 - It has to be activated: usable at will, it would teleport nutrients anywhere and make hyphae irrelevant for moving resources.
 
-> **Starting numbers (to tune):** Reach +200 (cap 600 → 800); Vision +50% radius; Scissors cooldown 30 s; Flow 2× for 10 s, cooldown 45 s; boost upkeep 1/s like a colony; 3 boosts per map, a depleted one returning as a random type elsewhere after 60 s; the same passive held twice doesn't stack.
+> **Starting numbers (to tune):** Reach +200 (cap 600 → 800); Vision +50% radius; Sever cooldown 30 s; Flow 2× for 10 s, cooldown 45 s; boost upkeep 1/s like a colony; 2 boosts at the start of a round, then a new one of a random kind every 40 s, up to 5 on the map; the same passive held twice doesn't stack.
 
 > **Still to pin down:**
 > - How much of its store the colony that fires Distribute sends — all of it, or a share like ejecting — and how the pulse treats a loop (each colony once).
@@ -231,4 +232,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Boosts as capture points (Section 6.7) — five boosts: Branch, Reach, Vision (passive), Flow, Scissors (activated).
+9. Boosts as capture points (Section 6.7) — five boosts: Branch, Reach, Vision (passive), Flow, Sever (activated).

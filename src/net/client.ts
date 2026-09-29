@@ -181,7 +181,7 @@ export class NetClient {
     for (const p of snap.players) {
       world.players.push({
         id: p.id, name: p.name, color: p.color, isBot: false, alive: p.alive, score: p.score,
-        abilities: { flowUntil: p.fu, flowReadyAt: p.fr, scissorsReadyAt: p.sr },
+        abilities: { flowUntil: p.fu, flowReadyAt: p.fr, severReadyAt: p.sr },
       });
     }
     world.tick = snap.tick;

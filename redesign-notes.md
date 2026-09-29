@@ -10,7 +10,7 @@ Ideas that would change a core rule, parked here until we come back to them. Not
 
 Today every hypha moves a flat `PIPE_RATE_PER_SEC` (3/s) between your own colonies and out of falls. Instead, a hypha would move **a percentage of its source colony's store each second**. A rich colony pushes hard; a lean one trickles.
 
-Drains on rivals already work a little like this — their rate grows with the attacker's size (`attackRate` in `config.ts`) — so the idea isn't foreign to the game.
+(Drains on rivals once worked a little like this — their rate grew with the attacker's size — but that special case was removed: every hypha now runs at the same rate, whatever it draws from.)
 
 ### What prompted it
 

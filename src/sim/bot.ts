@@ -1,4 +1,4 @@
-import { NODE_SPACING } from "../config";
+import { MAX_OUT_PIPES_PER_COLONY, NODE_SPACING } from "../config";
 import { dist, type Vec } from "./geometry";
 import type { Command, GameNode, PlayerId } from "./types";
 import type { World } from "./world";
@@ -24,6 +24,12 @@ export const BOT_LEVELS: Record<BotLevel, { actionsPerSecond: number; thinkSecon
 const MAX_SAVED_ACTIONS = 3;
 /** Throw directions tried when the straight line toward food is blocked. */
 const THROW_ANGLES = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05];
+/**
+ * Shorter throws tried when the full one is refused. Late in a round most food
+ * sits inside a rival's territory, where nobody can land — but it only has to be
+ * in reach to drain, so landing on the near side of their territory works.
+ */
+const THROW_LENGTHS = [1, 0.75, 0.5, 0.3];
 /** Enough to keep the frame budget: past this a bot stops throwing. */
 const MAX_COLONIES = 40;
 
@@ -176,38 +182,60 @@ class Brain {
   }
 
   /**
-   * Throw one colony toward the most valuable fall none of ours can tap yet — big
-   * pools, close by — from the nearest colony with enough to spare. If the
-   * straight line is blocked by terrain or a hypha, angled throws are tried.
+   * Throw one colony toward the most valuable target we can't reach yet: food
+   * (big pools, close by) or a weaker rival colony to land within draining range
+   * of. Targets are tried best-first — when the best is walled off by terrain, a
+   * wall, a hypha or rival territory, the next is tried, so exploration never
+   * freezes on one unreachable fall. Each target gets angled throws too.
    */
   expand(): void {
     if (!this.canAct() || this.mine.length >= MAX_COLONIES) return;
-    const throwers = this.mine.filter((c) => c.nutrients >= 80);
+    // A throw grows a hypha from the thrower, so it needs a free output slot. Kept
+    // cords fill interior hubs' slots, so the throwers are whoever has one free —
+    // usually the frontier. (Picking the nearest rich colony regardless stalled
+    // expansion entirely once hubs filled up.)
+    const throwers = this.mine.filter(
+      (c) => c.nutrients >= 80 && this.world.ownOutCount(c.id) < MAX_OUT_PIPES_PER_COLONY,
+    );
     if (throwers.length === 0) return;
+    const nearest = (t: GameNode) =>
+      throwers.reduce((a, b) => (dist(a.x, a.y, t.x, t.y) <= dist(b.x, b.y, t.x, t.y) ? a : b));
 
-    let best: { fall: GameNode; from: GameNode; score: number } | null = null;
+    const targets: { at: GameNode; from: GameNode; score: number }[] = [];
     for (const fall of this.falls) {
       if (fall.nutrients < 40) continue;
       if (this.mine.some((c) => this.joined.has(pairKey(fall.id, c.id)))) continue;
-      const from = throwers.reduce((a, b) => (dist(a.x, a.y, fall.x, fall.y) <= dist(b.x, b.y, fall.x, fall.y) ? a : b));
-      // Already within some colony's reach: tapping handles it, unless blocked.
-      const d = dist(from.x, from.y, fall.x, fall.y);
-      const score = fall.nutrients / (d + 300);
-      if (!best || score > best.score) best = { fall, from, score };
+      const from = nearest(fall);
+      targets.push({ at: fall, from, score: fall.nutrients / (dist(from.x, from.y, fall.x, fall.y) + 300) });
     }
-    if (!best) return;
+    for (const rival of this.nodes) {
+      if (rival.kind !== "colony" || rival.owner == null || rival.owner === this.player) continue;
+      const from = nearest(rival);
+      const edge = from.nutrients - rival.nutrients; // how much stronger we are there
+      if (edge <= 0) continue;
+      targets.push({ at: rival, from, score: (edge * 2) / (dist(from.x, from.y, rival.x, rival.y) + 300) });
+    }
+    targets.sort((a, b) => b.score - a.score);
 
-    const { fall, from } = best;
-    const d = dist(from.x, from.y, fall.x, fall.y);
-    const reach = this.world.reachOf(from);
-    // Land just short of the fall, or as far as this colony can throw.
-    const step = Math.min(reach * 0.9, Math.max(NODE_SPACING * 3, d - this.world.radiusOf(fall) - NODE_SPACING * 2));
-    const heading = Math.atan2(fall.y - from.y, fall.x - from.x);
-    for (const turn of THROW_ANGLES) {
-      const at: Vec = { x: from.x + Math.cos(heading + turn) * step, y: from.y + Math.sin(heading + turn) * step };
-      if (this.world.canEject(this.player, from.id, at).ok) {
-        this.act({ type: "eject", player: this.player, from: from.id, ...at });
-        return;
+    for (const { at, from } of targets.slice(0, 8)) {
+      const d = dist(from.x, from.y, at.x, at.y);
+      const reach = this.world.reachOf(from);
+      // Land just short of it, or as far as this colony can throw.
+      const step = Math.min(reach * 0.9, Math.max(NODE_SPACING * 3, d - this.world.radiusOf(at) - NODE_SPACING * 2));
+      const heading = Math.atan2(at.y - from.y, at.x - from.x);
+      for (const length of THROW_LENGTHS) {
+        const reachFromSpot = dist(from.x, from.y, at.x, at.y) - step * length;
+        if (length < 1 && reachFromSpot > reach) break; // too short to reach it from there
+        for (const turn of THROW_ANGLES) {
+          const spot: Vec = {
+            x: from.x + Math.cos(heading + turn) * step * length,
+            y: from.y + Math.sin(heading + turn) * step * length,
+          };
+          if (this.world.canEject(this.player, from.id, spot).ok) {
+            this.act({ type: "eject", player: this.player, from: from.id, ...spot });
+            return;
+          }
+        }
       }
     }
   }

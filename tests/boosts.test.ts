@@ -3,9 +3,11 @@ import {
   BOOST_MAX,
   BOOST_SPAWN_SECONDS,
   BRANCH_OUT_PIPES,
-  FALL_DRAIN_GAIN,
   FLOW_COOLDOWN_SECONDS,
   FLOW_SECONDS,
+  HARVEST_MULTIPLIER,
+  RIND_MULTIPLIER,
+  SIPHON_MULTIPLIER,
   MAX_OUT_PIPES_PER_COLONY,
   PIPE_RATE_PER_SEC,
   REACH_BONUS,
@@ -63,8 +65,8 @@ describe("boosts", () => {
     world.enqueue({ type: "connect", player: rival.id, from: boost.id, to: taker.id });
     world.step();
     expect(boost.nutrients).toBeCloseTo(30 - PIPE_RATE_PER_SEC / SIM_HZ);
-    // Fed and sending nothing: sustained, so no upkeep.
-    expect(taker.nutrients).toBeCloseTo(300 + (PIPE_RATE_PER_SEC / SIM_HZ) * FALL_DRAIN_GAIN);
+    // Fed and sending nothing: sustained, so no upkeep. 1:1, like any hypha.
+    expect(taker.nutrients).toBeCloseTo(300 + PIPE_RATE_PER_SEC / SIM_HZ);
 
     boost.owner = me.id;
     world.boostsChanged();
@@ -127,6 +129,65 @@ describe("boosts", () => {
     holding(world, me.id, "reach", { x: 800, y: 0 });
     expect(world.reachOf(rich)).toBe(reach(5000) + REACH_BONUS);
     expect(world.reachOf(theirs)).toBe(reach(5000));
+  });
+
+  it("Harvest doubles what your fall lines yield, and no one else's", () => {
+    const { world, me, rival } = twoPlayers();
+    const fall = world.addFall(0, 0, 5000);
+    const mine = world.addColony(me.id, -200, 0, 300);
+    const theirs = world.addColony(rival.id, 200, 0, 300);
+    holding(world, me.id, "harvest", { x: 0, y: 700 });
+    world.enqueue({ type: "connect", player: me.id, from: fall.id, to: mine.id });
+    world.enqueue({ type: "connect", player: rival.id, from: fall.id, to: theirs.id });
+    world.step();
+    const [m0, t0, f0] = [mine.nutrients, theirs.nutrients, fall.nutrients];
+    runSeconds(world, 1);
+    expect(f0 - fall.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * 2); // the fall loses the same
+    expect(mine.nutrients - m0).toBeCloseTo(PIPE_RATE_PER_SEC * HARVEST_MULTIPLIER);
+    expect(theirs.nutrients - t0).toBeCloseTo(PIPE_RATE_PER_SEC);
+  });
+
+  it("Siphon doubles your drains on rivals and leaves your own lines alone", () => {
+    const { world, me, rival } = twoPlayers();
+    const victim = world.addColony(rival.id, 0, 0, 1000);
+    const hunter = world.addColony(me.id, 200, 0, 300);
+    const friend = world.addColony(me.id, 200, 200, 300);
+    holding(world, me.id, "siphon", { x: 0, y: 700 });
+    world.enqueue({ type: "connect", player: me.id, from: victim.id, to: hunter.id });
+    world.enqueue({ type: "connect", player: me.id, from: hunter.id, to: friend.id });
+    world.step();
+    const [v0, f0] = [victim.nutrients, friend.nutrients];
+    runSeconds(world, 1);
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * SIPHON_MULTIPLIER + 1); // + its upkeep
+    expect(friend.nutrients - f0).toBeCloseTo(PIPE_RATE_PER_SEC);
+  });
+
+  it("Rind halves drains on you, and cancels a Siphon exactly", () => {
+    const { world, me, rival } = twoPlayers();
+    const victim = world.addColony(me.id, 0, 0, 1000);
+    const hunter = world.addColony(rival.id, 200, 0, 300);
+    holding(world, me.id, "rind", { x: 0, y: 700 });
+    world.enqueue({ type: "connect", player: rival.id, from: victim.id, to: hunter.id });
+    world.step();
+    let v0 = victim.nutrients;
+    runSeconds(world, 1);
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * RIND_MULTIPLIER + 1); // + its upkeep
+    holding(world, rival.id, "siphon", { x: 0, y: -700 });
+    v0 = victim.nutrients;
+    runSeconds(world, 1);
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC + 1);
+  });
+
+  it("Chitin makes your hyphae immune to Sever", () => {
+    const { world, me, rival } = twoPlayers();
+    const a = world.addColony(rival.id, 0, 0, 500);
+    const b = world.addColony(rival.id, 200, 0, 500);
+    world.enqueue({ type: "connect", player: rival.id, from: a.id, to: b.id });
+    world.step();
+    const pipe = world.pipeBetween(a.id, b.id)!;
+    holding(world, me.id, "sever", { x: 0, y: 700 });
+    holding(world, rival.id, "chitin", { x: 0, y: -700 });
+    expect(world.canSever(me.id, pipe.id)).toEqual({ ok: false, reason: "hardened by Chitin" });
   });
 
   it("Vision widens what you see", () => {

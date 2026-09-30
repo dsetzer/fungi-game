@@ -25,11 +25,14 @@ export interface Abilities {
 export type NodeKind = "colony" | "fall" | "boost";
 
 /**
- * Boosts (§6.7): capture points drawn like falls. Branch, Reach and Vision are
- * passive while held; Flow and Sever are abilities the holder fires.
+ * Boosts (§6.7): capture points. Branch, Reach, Vision, Harvest, Siphon, Rind and
+ * Chitin are passive while held; Flow and Sever are abilities the holder fires.
  */
-export type BoostKind = "branch" | "reach" | "vision" | "flow" | "sever";
-export const BOOST_KINDS: readonly BoostKind[] = ["branch", "reach", "vision", "sever", "flow"];
+export type BoostKind =
+  | "branch" | "reach" | "vision" | "harvest" | "siphon" | "rind" | "chitin" | "flow" | "sever";
+export const BOOST_KINDS: readonly BoostKind[] = [
+  "branch", "reach", "vision", "harvest", "siphon", "rind", "chitin", "sever", "flow",
+];
 
 export interface GameNode {
   id: EntityId;

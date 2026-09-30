@@ -121,7 +121,8 @@ const input = new Input(canvas, camera, currentWorld, currentPlayer, sendCommand
  * in place, so a click is never lost to the HUD rebuilding under the pointer.
  */
 const PASSIVE_EFFECT: Partial<Record<BoostKind, string>> = {
-  branch: "8 outputs", reach: "+reach", vision: "+vision",
+  branch: "8 outputs", reach: "+reach", vision: "+vision", harvest: "2× from falls", siphon: "2× drains",
+  rind: "½ drains on you", chitin: "no Sever",
 };
 const HOTKEY: Partial<Record<BoostKind, string>> = Object.fromEntries(
   Object.entries(ABILITY_KEYS).map(([key, ability]) => [ability, key]),

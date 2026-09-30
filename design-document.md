@@ -99,16 +99,17 @@ Nutrient falls are resource patches scattered across the arena at the start of e
 
 - Draining one normally depletes its pool — once it hits zero, it disappears.
 - **Falls are placed once, at arena generation, and never respawn.** Every fall in a round is a finite, shrinking pool — the map gets poorer as the round goes on, which is what pushes players outward and eventually into each other. (Boosts, Section 6.7, are the opposite: they respawn.)
-- **Draining a fall yields more than it costs the fall** *(confirmed from the original's pacing)*: **three out of the fall arrive as four in the colony.** Colony-to-colony transfers stay 1:1; any gain there would let a ring of colonies generate nutrients with no fall involved at all.
-- **Sustaining a fall is the economy.** Run a pipeline *into* a fall from one of your nodes while another draws *out* of it, and the two flows offset: the pool stays flat instead of being consumed, and the 3-in/4-out ratio nets you the difference forever. That difference is **+1/s — exactly one colony's upkeep** — so a sustained fall pays for a colony, and a cluster of falls wired up this way is the passive income that funds expansion. Find more falls as you explore, loop them, expand further. This is deliberate, not an exploit to be balanced away: the ratio is set small precisely so the loop is worth building rather than a runaway.
+- **Draining a fall is 1:1, like every hypha:** ten out of the fall arrive as ten in the colony (hyphae run at 10/s). A fall is food — a finite pool you pull into your network — not a multiplier.
+- **Sustaining a fall needs Harvest** (Section 6.7). Run a pipeline *into* a fall from one of your nodes while another draws *out* of it, and the two flows offset: the pool stays flat instead of being consumed. Without Harvest that nets nothing. Holding Harvest, your fall lines yield double — ten out, twenty in — so the same loop pays **+10/s forever**, a full line's worth. That is the discovery a Harvest boost offers: whoever holds it can build an endless income nobody else can, and everyone else has a reason to take it from them.
 
-  The counterplay is what makes it fair, and there are two routes:
+  The counterplay is what makes it fair, and there are three routes:
   - **Steal the flow.** Drain the loop's colonies directly (Section 6.3) and take the nutrients back out of it.
   - **Kill the source.** Attach your own drain line to the fall. Its total outflow now exceeds what its owner feeds in, so the pool bleeds the difference and eventually empties — and since falls never respawn, that disables the income permanently. Attacking the well beats attacking the bucket.
+  - **Take the Harvest.** Drain the Harvest boost dry and every loop its holder built goes back to netting nothing.
 
 > **Open item:** whether nutrient falls pay their own upkeep (Section 5) like player nodes do, or are exempt, is unconfirmed — this materially affects how valuable the sustaining trick above is and needs to be pinned down during prototyping.
 
-> **Resolved:** the ratio was 3-out/6-in during early prototyping, which made a sustain loop pay +3/s and dwarf every other source. It is now 3-out/4-in, the number the loop is designed around.
+> **Resolved:** the ratio was 3-out/6-in during early prototyping, which made a sustain loop pay +3/s and dwarf every other source. It became 3-out/4-in, which made loops something every player built as a matter of course. Loops are now gated behind the Harvest boost and falls are 1:1, so an endless income is something you find, not something everyone has.
 
 ### 6.5 Walls — Defensive Structures
 
@@ -147,7 +148,7 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 **Most boosts are passive.** Holding one gives its benefit to your whole network for as long as you keep the node fed, and losing the node loses the benefit at once. There is no button and no cooldown — just a point on the map worth keeping.
 
-**A passive boost may only add options, never change what an existing network is already doing.** Extra range, extra outputs and a wider view leave a built network behaving exactly as before; the player chooses whether to use them, and losing the boost takes the option away without rebalancing anything. A boost that sped up every hypha fails this test: colonies set up for the normal rate would start bleeding, and losing it would rebalance the whole network under the player.
+**A passive boost may only add options, never change what an existing network is already doing.** Extra range, extra outputs and a wider view leave a built network behaving exactly as before; boosts that only make what you take in bigger, or what you lose smaller (Harvest, Siphon, Rind), pass too, because no colony of yours sends any more than it did; the player chooses whether to use them, and losing the boost takes the option away without rebalancing anything. A boost that sped up every hypha fails this test: colonies set up for the normal rate would start bleeding, and losing it would rebalance the whole network under the player.
 
 **Two boosts are activated instead,** because what they grant is an action rather than a bonus. Each appears on screen as an ability that is clicked or fired with a number hotkey. Sever arms a single cut and goes on cooldown once it's made; Flow takes effect at once and goes on cooldown when it ends. It stays usable for as long as the boost is held.
 
@@ -155,10 +156,14 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 | Boost | Kind | Effect | Notes |
 |---|---|---|---|
-| **Branch** | Passive | Every colony you own gets **double the output slots** (4 → 8). | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. Doubled rather than +1 because of the sustain engine: a loop nets a third of the pipe rate, so three loops feed exactly one output and a 3-loop + 1-output hub fills all four slots with no surplus or deficit. One extra slot is nearly useless there — a fourth loop only piles surplus in the hub, a second output starves it. Eight slots fit two full engines (six loops + two outputs) or anything else a player builds. |
+| **Branch** | Passive | Every colony you own gets **double the output slots** (4 → 8). | Rival drain lines don't use a colony's output slots (`config.ts`), so this is pure capacity with no added exposure. Paired with Harvest it doubles the engines a hub can run: a Harvest loop nets a full line, so each loop feeds one output, and eight slots hold twice what four do. |
 | **Reach** | Passive | Every colony's ejection and hypha reach increases. | Line of sight still applies, so enclaves and chokepoints are unaffected. The bonus is always on, so it should be well under the +100% considered for a one-shot version. |
 | **Vision** | Passive | A larger view radius for everything you own. | |
-| **Flow** | Activated | Every hypha you own carries double its rate for a while. | Not a passive boost, because a permanent speed-up would rebalance networks built for the normal rate. As a timed burst nothing breaks: each colony's hypha income and spend double together while upkeep stays flat, so balanced colonies stay balanced, surplus doubles, falls empty sooner but yield the same total, and your drain lines on rivals pull twice as hard — an attack window. |
+| **Harvest** | Passive | Your hyphae out of falls yield **double** — ten out, twenty in. | The only thing that makes a sustain loop pay (Section 6.4): with it, a loop nets +10/s forever. The "wait a minute" boost — whoever finds it can build an income no one else can. Losing it drops loops back to netting nothing, never to a loss. |
+| **Siphon** | Passive | Your hyphae draining a rival's colony or boost pull **double** (20/s). | Targeted at rivals only: your gathering and internal lines are untouched, and nothing of yours sends more than before, so it passes the passive rule. Makes a funnel on one colony a kill in half the time. |
+| **Rind** | Passive | Rivals' hyphae draining your colonies or boosts pull **half** (5/s). | The defensive counterpart to Siphon, and it cancels it exactly: Siphon against Rind is a plain 10/s. Not invulnerability — the Rind node itself can be drained dry, and falls, walls and relays are exposed as ever. |
+| **Chitin** | Passive | Hyphae you grew **can't be cut by Sever**. | The counter to Sever, and deliberately narrow: whether it matters depends on a rival having found Sever, which is the lottery boosts are. Walls, draining a hypha's ends and killing colonies all still work. |
+| **Flow** | Activated | Every hypha you own carries double its rate for a while. | Not a passive boost, because a permanent speed-up would rebalance networks built for the normal rate. As a timed burst nothing breaks: each colony's hypha income and spend double together while upkeep stays flat, so balanced colonies stay balanced, surplus doubles, falls empty sooner, and your drain lines on rivals pull twice as hard — an attack window. |
 | **Sever** | Activated | Click any hypha to cut it. | Ordinarily only the player who grew a hypha may cut it (Section 6.2). Sever cuts *any* hypha on the map, owned by anyone, attached to anyone — the answer to being drained by someone out of reach. The cooldown is what pays for that. |
 
 **On hold** — liked, but parked to keep the first version simple:
@@ -178,7 +183,6 @@ The economics follow from that: holding a boost costs throughput every second, s
 
 > **Still to pin down:**
 > - How much of its store the colony that fires Distribute sends — all of it, or a share like ejecting — and how the pulse treats a loop (each colony once).
-> - Whether a fall-yield boost joins the list: draining a fall yields 3 → 5 instead of 3 → 4, doubling what a sustain loop pays. It passes the passive rule.
 > - Whether an armed-but-unused ability can be cancelled, and whether losing the boost while armed cancels it.
 
 ## 7. Win Condition & Match Flow
@@ -232,4 +236,4 @@ To get to a playable prototype fastest, in rough priority order:
 6. Line-of-sight blocking and node-built walls (Section 4, 6.5).
 7. Procedural arena generation with chokepoints (Section 4).
 8. Full fungal art pass (Section 3, 8).
-9. Boosts as capture points (Section 6.7) — five boosts: Branch, Reach, Vision (passive), Flow, Sever (activated).
+9. Boosts as capture points (Section 6.7) — nine boosts: Branch, Reach, Vision, Harvest, Siphon, Rind, Chitin (passive), Flow, Sever (activated).

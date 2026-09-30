@@ -47,7 +47,10 @@ body {
   position: fixed;
   bottom: 12px;
   right: 84px; /* beside Leave, clear of the help text */
+  max-width: calc(100vw - 620px); /* the help text takes ~520px on the left */
   display: flex;
+  flex-wrap: wrap-reverse; /* extra rows stack upward */
+  justify-content: flex-end;
   gap: 6px;
   font-size: 13px;
 }

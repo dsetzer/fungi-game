@@ -25,7 +25,8 @@ const COLORS = {
 
 const DEATH_WARN_SECONDS = 20;
 export const BOOST_NAMES: Record<BoostKind, string> = {
-  branch: "Branch", reach: "Reach", vision: "Vision", flow: "Flow", sever: "Sever",
+  branch: "Branch", reach: "Reach", vision: "Vision", harvest: "Harvest", siphon: "Siphon",
+  rind: "Rind", chitin: "Chitin", flow: "Flow", sever: "Sever",
 };
 /** Hypha chevrons: gap between them, and how fast they crawl, in screen pixels. */
 const CHEVRON_GAP_PX = 10;
@@ -417,6 +418,43 @@ export class Renderer {
           ctx.lineTo(dx + u * 0.3, 0);
           ctx.lineTo(dx - u * 0.35, u * 0.7);
         }
+        break;
+      case "harvest": // a sprout: a stem and two leaves
+        ctx.moveTo(0, u);
+        ctx.lineTo(0, -u * 0.2);
+        ctx.moveTo(0, u * 0.1);
+        ctx.quadraticCurveTo(-u * 0.9, 0, -u * 0.8, -u * 0.8);
+        ctx.quadraticCurveTo(-u * 0.1, -u * 0.6, 0, u * 0.1);
+        ctx.moveTo(0, -u * 0.2);
+        ctx.quadraticCurveTo(u * 0.9, -u * 0.3, u * 0.8, -u * 1);
+        ctx.quadraticCurveTo(u * 0.1, -u * 0.9, 0, -u * 0.2);
+        break;
+      case "siphon": // a drop, drawn off
+        ctx.moveTo(0, -u);
+        ctx.quadraticCurveTo(u * 0.9, u * 0.1, 0, u * 0.9);
+        ctx.quadraticCurveTo(-u * 0.9, u * 0.1, 0, -u);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, u * 0.25, u * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      case "rind": // a shield
+        ctx.moveTo(0, -u);
+        ctx.lineTo(u * 0.8, -u * 0.6);
+        ctx.quadraticCurveTo(u * 0.8, u * 0.5, 0, u);
+        ctx.quadraticCurveTo(-u * 0.8, u * 0.5, -u * 0.8, -u * 0.6);
+        ctx.closePath();
+        break;
+      case "chitin": // a hard hexagonal plate
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+          if (k === 0) ctx.moveTo(Math.cos(a) * u * 0.9, Math.sin(a) * u * 0.9);
+          else ctx.lineTo(Math.cos(a) * u * 0.9, Math.sin(a) * u * 0.9);
+        }
+        ctx.closePath();
+        ctx.moveTo(0, -u * 0.35);
+        ctx.lineTo(0, u * 0.35);
         break;
       case "sever": // a line, cut through
         ctx.moveTo(-u, u * 0.1);

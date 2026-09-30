@@ -140,7 +140,7 @@ urgency: defend colonies being drained, feed starving ones from richer siblings,
 reach, cut a cord when a colony is overspending, drain weaker rival colonies, and otherwise throw a
 new colony toward the best-scoring fall or weak rival. They are limited only by how fast they may
 act: each throw, new line or cut spends one action, and actions refill at the difficulty's rate
-(Easy 0.5/s, Normal 1.5/s, Hard 4/s). A bot stops throwing at 40 colonies.
+(Easy 0.2/s, Normal 0.5/s, Hard 0.7/s — one action at a time). A bot stops throwing at 40 colonies.
 
 ## Decisions made for open design items
 
@@ -154,13 +154,14 @@ noted.
   the map however rich it gets. It governs throwing, connecting and building walls alike.
 - **Upkeep:** 1/s, charged only to colonies that aren't sustained — a colony with inflow that
   isn't sending out more than it receives pays nothing, so relays don't wither.
-- **Gathering:** three out of a fall arrive as four in the colony (`FALL_YIELD_PER_SEC`). Feed a
-  fall while draining it and its pool stays flat while you net +1/s forever — one colony's upkeep.
-  That loop is the intended passive economy, and it's contestable: a rival's drain line pushes the
+- **Gathering:** hyphae run at 10/s, and every hypha is 1:1 — ten out of a fall arrive as ten.
+  Feeding a fall while draining it holds its pool flat but nets nothing, unless you hold the
+  Harvest boost, which doubles your fall lines' yield and turns that loop into +10/s forever.
+  That loop is the prize, and it's contestable: a rival's drain line pushes the
   fall's outflow past what you feed it, and since falls never respawn, emptying one kills that
   income for the rest of the round. Colony-to-colony transfers are 1:1, so a ring of colonies with
   no fall in it generates nothing.
-- **Attacking:** a hypha draining a *rival* is an ordinary hypha — the same 3/s as any other,
+- **Attacking:** a hypha draining a *rival* is an ordinary hypha — the same 10/s as any other,
   1:1. To drain a colony faster than its owner can feed it, put more hyphae on it (funnelling).
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so
   funnelling and reinforcing always work. The cap counts only hyphae *you* grew, so a rival's

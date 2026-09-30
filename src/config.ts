@@ -22,19 +22,18 @@ export const EJECT_MIN_AMOUNT = 12; // a throw smaller than this isn't worth mak
 export const EJECT_MIN_PARENT_REMAINING = 5; // parent must keep at least this after ejecting
 
 // §6.2 Pipelines
-export const PIPE_RATE_PER_SEC = 3; // nutrients per second drawn out of the source
-// Draining a nutrient fall yields more than it costs the fall: three out of the
-// fall arrive as four in the colony. That ratio is deliberately small enough to
-// make the feedback loop the point rather than a runaway: feed a fall at the pipe
-// rate while draining it at the pipe rate and its pool stays flat while you net
-// +1/s — exactly one colony's upkeep. A cluster of falls wired that way is the
-// passive economy that funds expansion, and it is contestable: a rival can drain
-// your loop, or add their own drain line so the fall's outflow outruns what you
-// feed it and the pool empties for good.
-// Colony-to-colony transfers stay 1:1 — any gain there would let a ring of
-// colonies print nutrients with no fall involved at all.
-export const FALL_YIELD_PER_SEC = 4;
-export const FALL_DRAIN_GAIN = FALL_YIELD_PER_SEC / PIPE_RATE_PER_SEC;
+export const PIPE_RATE_PER_SEC = 10; // nutrients per second drawn out of the source
+// Every hypha is 1:1, falls included: ten out of a fall arrive as ten. So a
+// sustain loop — feeding a fall while draining it — holds the pool flat and nets
+// nothing. Holding Harvest (§6.7) changes that: your fall lines yield double, and
+// a loop becomes an endless income. Colony-to-colony transfers are always 1:1 —
+// any gain there would let a ring of colonies print nutrients with no fall at all.
+/** Harvest: what your hyphae out of a fall yield per nutrient they draw. */
+export const HARVEST_MULTIPLIER = 2;
+/** Siphon: how much harder your hyphae draining a rival's node pull. */
+export const SIPHON_MULTIPLIER = 2;
+/** Rind: how hard a rival's hyphae draining your nodes pull. Cancels Siphon exactly. */
+export const RIND_MULTIPLIER = 0.5;
 // Only outgoing hyphae are capped; a colony can take in any number (funnelling,
 // reinforcement). Falls are uncapped. The cap counts only hyphae the colony's
 // owner grew: a rival's drain line hangs off your colony without using up a slot,

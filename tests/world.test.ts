@@ -3,8 +3,7 @@ import {
   DT,
   EJECT_FRACTION_DEFAULT,
   EJECT_MIN_AMOUNT,
-  FALL_DRAIN_GAIN,
-  FALL_YIELD_PER_SEC,
+  HARVEST_MULTIPLIER,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
   NODE_SPACING,
@@ -61,7 +60,7 @@ describe("upkeep", () => {
     const c0 = c.nutrients;
     runSeconds(world, 1);
     expect(f0 - fall.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC);
-    expect(c.nutrients - c0).toBeCloseTo(PIPE_RATE_PER_SEC * FALL_DRAIN_GAIN);
+    expect(c.nutrients - c0).toBeCloseTo(PIPE_RATE_PER_SEC); // 1:1, like any hypha
   });
 
   it("waives upkeep for a relay that passes on what it receives", () => {
@@ -197,7 +196,7 @@ describe("eject", () => {
     world.step();
     expect(world.reachOf(parent)).toBeLessThan(edge); // a separate connect would now fail…
     expect(world.pipes.size).toBe(1); // …but the auto-connect already happened
-    runSeconds(world, 5);
+    runSeconds(world, 1); // and it holds (the cord soon empties the parent, but not yet)
     expect(world.pipes.size).toBe(1);
   });
 
@@ -653,7 +652,7 @@ describe("draining a rival", () => {
     world.enqueue({ type: "connect", player: me.id, from: victim.id, to: attacker.id });
     world.enqueue({ type: "connect", player: me.id, from: victim.id, to: second.id });
     world.step();
-    // Two drains (6/s) against one fall line (4/s in): a net loss of 2/s.
+    // Two drains (20/s) against one fall line (15/s in): a net loss of 5/s.
     runSeconds(world, 120);
     expect(world.nodes.has(victim.id)).toBe(false);
   });
@@ -700,19 +699,25 @@ describe("sustaining a fall", () => {
   const mine = (world: World, ...ids: number[]) =>
     ids.reduce((t, id) => t + (world.nodes.get(id)?.nutrients ?? 0), 0);
 
-  it("holds the pool flat and pays the difference between what goes in and out", () => {
+  it("holds the pool flat but nets nothing without Harvest", () => {
     const { world, a, b, fall } = loop(200);
     const before = mine(world, a.id, b.id);
     runSeconds(world, 30);
     expect(fall.nutrients).toBeCloseTo(200, 4); // neither depleting nor filling
-    // Three out, four in: the loop nets the difference, and nothing in the ring
-    // pays upkeep because every node's inflow covers what it sends on.
-    const net = FALL_YIELD_PER_SEC - PIPE_RATE_PER_SEC;
-    expect(mine(world, a.id, b.id) - before).toBeCloseTo(net * 30, 3);
+    // Every node's inflow covers what it sends on, so nobody pays upkeep either.
+    expect(mine(world, a.id, b.id) - before).toBeCloseTo(0, 3);
   });
 
-  it("is small enough that the loop only just covers a colony's upkeep", () => {
-    expect(FALL_YIELD_PER_SEC - PIPE_RATE_PER_SEC).toBe(UPKEEP_PER_SEC);
+  it("pays an endless income while its owner holds Harvest", () => {
+    const { world, me, a, b, fall } = loop(200);
+    const harvest = world.addBoost(-600, 0, "harvest");
+    harvest.owner = me.id;
+    world.boostsChanged();
+    const before = mine(world, a.id, b.id);
+    runSeconds(world, 30);
+    expect(fall.nutrients).toBeCloseTo(200, 4);
+    const net = PIPE_RATE_PER_SEC * (HARVEST_MULTIPLIER - 1); // a full line's worth
+    expect(mine(world, a.id, b.id) - before).toBeCloseTo(net * 30, 3);
   });
 
   it("can be raided: a rival's drain line empties the fall for good", () => {

@@ -11,6 +11,9 @@ import {
   FLOW_COOLDOWN_SECONDS,
   FLOW_MULTIPLIER,
   FLOW_SECONDS,
+  HARVEST_MULTIPLIER,
+  RIND_MULTIPLIER,
+  SIPHON_MULTIPLIER,
   REACH_BONUS,
   SEVER_COOLDOWN_SECONDS,
   SIM_HZ,
@@ -22,7 +25,6 @@ import {
   EJECT_FRACTION_MIN,
   EJECT_MIN_AMOUNT,
   EJECT_MIN_PARENT_REMAINING,
-  FALL_DRAIN_GAIN,
   FALL_CLUSTER_BLOBS_MAX,
   FALL_CLUSTER_BLOBS_MIN,
   FALL_CLUSTER_GAP,
@@ -321,7 +323,9 @@ export class World {
     const p = this.player(player);
     if (!p || !this.holds(player, "sever")) return NO("you don't hold Sever");
     if (this.tick < p.abilities.severReadyAt) return NO("Sever is recharging");
-    if (!this.pipes.has(pipeId)) return NO("no such hypha");
+    const pipe = this.pipes.get(pipeId);
+    if (!pipe) return NO("no such hypha");
+    if (this.holds(pipe.owner, "chitin")) return NO("hardened by Chitin");
     return YES;
   }
 
@@ -651,8 +655,14 @@ export class World {
     const rateOf = new Map<EntityId, number>();
     const demandOf = new Map<EntityId, number>();
     for (const p of this.pipes.values()) {
+      const src = this.nodes.get(p.from)!;
       const boosted = this.flowActive(p.owner) ? FLOW_MULTIPLIER : 1;
-      const r = PIPE_RATE_PER_SEC * DT * boosted;
+      // A hypha draining a rival's node (§6.7): Siphon makes its grower pull
+      // harder, Rind makes the victim give up less. Together they cancel.
+      const drain = src.owner != null && src.owner !== p.owner;
+      const siphon = drain && this.holds(p.owner, "siphon") ? SIPHON_MULTIPLIER : 1;
+      const rind = drain && this.holds(src.owner, "rind") ? RIND_MULTIPLIER : 1;
+      const r = PIPE_RATE_PER_SEC * DT * boosted * siphon * rind;
       rateOf.set(p.id, r);
       demandOf.set(p.from, (demandOf.get(p.from) ?? 0) + r);
     }
@@ -668,10 +678,10 @@ export class World {
       const share = Math.min(1, Math.max(0, src.nutrients) / wanted);
       if (share < 1) drained.add(p.from);
       const amount = rateOf.get(p.id)! * share;
-      // Draining a fall yields more than it costs the fall (§6.4): gathering is
-      // meant to be fast. Colony-to-colony transfers stay 1:1.
-      // A boost drains like a fall, whoever owns it (§6.7).
-      const gained = src.kind === "colony" ? amount : amount * FALL_DRAIN_GAIN;
+      // Every hypha is 1:1 — except a fall line grown by a Harvest holder (§6.7),
+      // which yields double: the one way a sustain loop pays.
+      const harvest = src.kind === "fall" && this.holds(p.owner, "harvest") ? HARVEST_MULTIPLIER : 1;
+      const gained = amount * harvest;
       // Score is everything drawn into your network from outside it (§7 leaderboard).
       const dst = this.nodes.get(p.to)!;
       if (dst.owner != null && dst.owner !== src.owner) {

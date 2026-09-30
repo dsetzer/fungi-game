@@ -101,7 +101,7 @@ src/
     arena.ts         seeded cave generation + WallIndex for line-of-sight queries
     spawn.ts         where a joining or respawning player lands
     vision.ts        fog-of-war queries, used by the server to filter snapshots
-    bot.ts           computer players; issue ordinary Commands, no special access
+    bot/             computer players (bot-design.md); issue ordinary Commands, no special access
     match.ts         one authoritative tick (bots + world.step)
     geometry.ts      segment/circle maths, seeded RNG
     types.ts         entities + the Command union
@@ -135,12 +135,15 @@ npx tsx tools/mapgen/check.ts [seeds]        # connectivity, speed and fairness 
 
 ## Computer players
 
-Bots play by the same rules as a person and issue ordinary Commands. Each step they, in order of
-urgency: defend colonies being drained, feed starving ones from richer siblings, tap every fall in
-reach, cut a cord when a colony is overspending, drain weaker rival colonies, and otherwise throw a
-new colony toward the best-scoring fall or weak rival. They are limited only by how fast they may
-act: each throw, new line or cut spends one action, and actions refill at the difficulty's rate
-(Easy 0.2/s, Normal 0.5/s, Hard 0.7/s — one action at a time). A bot stops throwing at 40 colonies.
+Bots play by the same rules as a person and issue ordinary Commands (`src/sim/bot/`, designed in
+[bot-design.md](bot-design.md)). Three layers run every time a bot looks: a **strategy** state
+machine picks a posture (opening, expand, consolidate, war, defend) from its live stats; **tasks**
+carry multi-step plans as state machines — expeditions that path round terrain, wall-then-sever,
+Harvest loops, boost holds, sieges; **reflexes** keep the network healthy — taps, supply lines,
+reversals, rings, relinking pieces, walls, drains, Flow. Every candidate is priced on one scale,
+weighted by the posture, checked against the rules best-first, and the best legal one is taken.
+Eyes are instant, hands are slow: one action at a time with a gap after each (Easy 5 s,
+Normal 2 s, Hard 1.4 s). A bot stops throwing at 40 colonies.
 
 ## Decisions made for open design items
 

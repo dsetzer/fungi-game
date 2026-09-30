@@ -9,8 +9,6 @@ import {
   RIND_MULTIPLIER,
   SIPHON_MULTIPLIER,
   MAX_OUT_PIPES_PER_COLONY,
-  NUTRIENT_SCALE,
-  UPKEEP_PER_SEC,
   PIPE_RATE_PER_SEC,
   REACH_BONUS,
   SEVER_COOLDOWN_SECONDS,
@@ -84,7 +82,7 @@ describe("boosts", () => {
     const was = held.nutrients;
     runSeconds(world, 2);
     expect(neutral.nutrients).toBe(100);
-    expect(held.nutrients).toBeCloseTo(was - 2 * UPKEEP_PER_SEC);
+    expect(held.nutrients).toBeCloseTo(was - 2);
   });
 
   it("keep appearing through the round, up to a cap, away from falls", () => {
@@ -114,7 +112,7 @@ describe("boosts", () => {
 
   it("Branch doubles output slots", () => {
     const { world, me } = twoPlayers();
-    const hub = world.addColony(me.id, 0, 0, 2000 * NUTRIENT_SCALE);
+    const hub = world.addColony(me.id, 0, 0, 2000);
     const ring = (i: number) => ({ x: Math.cos(i * 0.6) * 150, y: Math.sin(i * 0.6) * 150 });
     for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) world.enqueue({ type: "eject", player: me.id, from: hub.id, ...ring(i) });
     world.step();
@@ -160,7 +158,7 @@ describe("boosts", () => {
     world.step();
     const [v0, f0] = [victim.nutrients, friend.nutrients];
     runSeconds(world, 1);
-    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * SIPHON_MULTIPLIER + UPKEEP_PER_SEC); // + its upkeep
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * SIPHON_MULTIPLIER + 1); // + its upkeep
     expect(friend.nutrients - f0).toBeCloseTo(PIPE_RATE_PER_SEC);
   });
 
@@ -173,11 +171,11 @@ describe("boosts", () => {
     world.step();
     let v0 = victim.nutrients;
     runSeconds(world, 1);
-    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * RIND_MULTIPLIER + UPKEEP_PER_SEC); // + its upkeep
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC * RIND_MULTIPLIER + 1); // + its upkeep
     holding(world, rival.id, "siphon", { x: 0, y: -700 });
     v0 = victim.nutrients;
     runSeconds(world, 1);
-    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC + UPKEEP_PER_SEC);
+    expect(v0 - victim.nutrients).toBeCloseTo(PIPE_RATE_PER_SEC + 1);
   });
 
   it("Chitin makes your hyphae immune to Sever", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NUTRIENT_SCALE, SIM_HZ } from "../src/config";
+import { SIM_HZ } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
 import { BOT_LEVELS, runBot } from "../src/sim/bot";
 import { stepMatch } from "../src/sim/match";
@@ -22,7 +22,7 @@ describe("bots", () => {
 
   it("throw toward food out of reach instead of sitting still", () => {
     const { world, bot } = botWorld();
-    world.addColony(bot.id, 0, 0, 300 * NUTRIENT_SCALE);
+    world.addColony(bot.id, 0, 0, 300);
     world.addFall(1500, 0, 900);
     for (let i = 0; i < 10 * SIM_HZ; i++) stepMatch(world);
     const colonies = [...world.nodes.values()].filter((n) => n.owner === bot.id);

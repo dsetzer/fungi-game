@@ -6,25 +6,9 @@ export const SIM_HZ = 10; // sim steps per second
 export const TICK_MS = 1000 / SIM_HZ;
 export const DT = 1 / SIM_HZ; // seconds per sim step
 
-// §6.2 Hyphae set the pace of the whole game.
-export const PIPE_RATE_PER_SEC = 10; // nutrients per second drawn out of the source
-/**
- * The game was first balanced with hyphae at 3/s. Everything colony-side —
- * stores, upkeep, costs, fall pools — is that original amount × NUTRIENT_SCALE;
- * reach and territory read a store in the original units, so a bigger number
- * doesn't mean a longer arm.
- *
- * This is the one dial for how fast the game drains. Throws, fights and
- * starvation are the same mechanic, so they move together: at 10/3 everything
- * empties exactly as it did at 3/s; at 1 everything empties 3.3× faster (a throw
- * pours an unfed parent into its child in seconds). 2 is the compromise: fights
- * resolve ~1.7× faster and a parent still has a few seconds after a throw.
- */
-export const NUTRIENT_SCALE = 2;
-
 // §5 Node economy
-export const START_NUTRIENTS = 100 * NUTRIENT_SCALE;
-export const UPKEEP_PER_SEC = 1 * NUTRIENT_SCALE;
+export const START_NUTRIENTS = 100;
+export const UPKEEP_PER_SEC = 1;
 /**
  * Ejecting carries a share of the parent's store rather than a flat amount, so a
  * rich colony throws a strong child that can immediately throw again — chained
@@ -34,10 +18,11 @@ export const UPKEEP_PER_SEC = 1 * NUTRIENT_SCALE;
 export const EJECT_FRACTION_DEFAULT = 0.65;
 export const EJECT_FRACTION_MIN = 0.15;
 export const EJECT_FRACTION_MAX = 0.9;
-export const EJECT_MIN_AMOUNT = 12 * NUTRIENT_SCALE; // a throw smaller than this isn't worth making
-export const EJECT_MIN_PARENT_REMAINING = 5 * NUTRIENT_SCALE; // parent must keep at least this after ejecting
+export const EJECT_MIN_AMOUNT = 12; // a throw smaller than this isn't worth making
+export const EJECT_MIN_PARENT_REMAINING = 5; // parent must keep at least this after ejecting
 
 // §6.2 Pipelines
+export const PIPE_RATE_PER_SEC = 10; // nutrients per second drawn out of the source
 // Every hypha is 1:1, falls included: ten out of a fall arrive as ten. So a
 // sustain loop — feeding a fall while draining it — holds the pool flat and nets
 // nothing. Holding Harvest (§6.7) changes that: your fall lines yield double, and
@@ -64,7 +49,7 @@ export const MAX_OUT_PIPES_PER_COLONY = 4;
 export const BOOST_START = 2; // on the map when a round begins
 export const BOOST_MAX = 5; // never more than this on the map at once
 export const BOOST_SPAWN_SECONDS = 40; // a new one appears this often, anywhere open
-export const BOOST_POOL = 400 * NUTRIENT_SCALE; // a fresh boost's store
+export const BOOST_POOL = 400; // a fresh boost's store
 /** Keeps boosts off the doorstep of a spawn or a colony, so they are worth a trip. */
 export const BOOST_MIN_COLONY_DISTANCE = 700;
 /** Boosts stand on their own ground, never among a fall cluster. */
@@ -79,7 +64,7 @@ export const SEVER_COOLDOWN_SECONDS = 30;
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
 export const WALL_BAR_LENGTH = 170;
-export const WALL_COST = 15 * NUTRIENT_SCALE; // one-off, paid by the anchor colony
+export const WALL_COST = 15; // one-off, paid by the anchor colony
 export const MAX_WALLS_PER_COLONY = 3;
 // A new crossbar does NOT sever hyphae already crossing it: walling over your own
 // established lines while denying the ground to anyone else is the point of placing
@@ -98,8 +83,8 @@ export const FALL_CLUSTER_TIGHT_GAP = 45; // between those
 export const FALL_CLUSTER_LOOSE_MIN = 150; // the rest: this far from the group's centre…
 export const FALL_CLUSTER_LOOSE_MAX = 350; // …up to this
 export const FALL_CLUSTER_GAP = 700; // group centres never closer than this to another fall
-export const FALL_POOL_MIN = 60 * NUTRIENT_SCALE; // pools are spread evenly between these on a log scale:
-export const FALL_POOL_MAX = 1200 * NUTRIENT_SCALE; // as many small ones as middling, a few rich
+export const FALL_POOL_MIN = 60; // pools are spread evenly between these on a log scale:
+export const FALL_POOL_MAX = 1200; // as many small ones as middling, a few rich
 export const SPAWN_CLUSTER_DISTANCE = 500; // spawn → its cluster centre (just beyond start reach)
 export const FALLS_PAY_UPKEEP = false; // open design question
 
@@ -156,20 +141,20 @@ export const NODE_SPACING = 22; // min clearance between a new node and existing
  * throw still drew a substantial blob, so the map told you that you were strong
  * when you were not. Size now collapses toward the dot as a colony empties.
  *
- * In original units (store ÷ NUTRIENT_SCALE): 12 (can barely throw) → 18,
- * 30 → 45, 100 (spawn) → 114, 300 → 228, 1000 → 470, 2500 → 800, beyond → capped.
+ * 12 (can barely throw) → 18, 30 → 45, 100 (spawn) → 114, 300 → 228,
+ * 1000 → 470, 2500 (cluster eaten) → 800, beyond that → capped.
  */
 export const AURA_SCALE = 11;
 export const AURA_OFFSET = 25;
 export const MAX_COLONY_AURA = 900;
 
 export function colonyAura(nutrients: number): number {
-  const grown = Math.max(0, nutrients / NUTRIENT_SCALE) ** 0.55 * AURA_SCALE - AURA_OFFSET;
+  const grown = Math.max(0, nutrients) ** 0.55 * AURA_SCALE - AURA_OFFSET;
   return Math.min(MAX_COLONY_AURA, Math.max(NODE_CORE_RADIUS + 4, grown));
 }
 
 export function fallAura(nutrients: number): number {
-  return Math.min(420, 3 + Math.sqrt(Math.max(0, nutrients / NUTRIENT_SCALE)) * 2.5);
+  return Math.min(420, 3 + Math.sqrt(Math.max(0, nutrients)) * 2.5);
 }
 
 /**
@@ -181,5 +166,5 @@ export function fallAura(nutrients: number): number {
 export const MAX_REACH = 600;
 
 export function reach(nutrients: number): number {
-  return Math.min(MAX_REACH, 220 + Math.sqrt(Math.max(0, nutrients / NUTRIENT_SCALE)) * 20);
+  return Math.min(MAX_REACH, 220 + Math.sqrt(Math.max(0, nutrients)) * 20);
 }

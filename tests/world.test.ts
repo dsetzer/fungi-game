@@ -6,7 +6,6 @@ import {
   HARVEST_MULTIPLIER,
   MAX_OUT_PIPES_PER_COLONY,
   MAX_WALLS_PER_COLONY,
-  NUTRIENT_SCALE,
   NODE_SPACING,
   PIPE_RATE_PER_SEC,
   SIM_HZ,
@@ -218,7 +217,7 @@ describe("eject", () => {
 
   it("caps outputs but accepts any number of inputs", () => {
     const { world, me } = soloWorld();
-    const hub = world.addColony(me.id, 0, 0, 500 * NUTRIENT_SCALE);
+    const hub = world.addColony(me.id, 0, 0, 500);
     const ring = (i: number, n: number, r: number) => {
       const a = (i / n) * Math.PI * 2 + 0.3;
       return { x: Math.cos(a) * r, y: Math.sin(a) * r };
@@ -367,8 +366,8 @@ describe("pipes", () => {
 
   it("refuses to reverse when the new source has no free output", () => {
     const { world, me } = soloWorld();
-    const hub = world.addColony(me.id, 0, 0, 900 * NUTRIENT_SCALE);
-    const feeder = world.addColony(me.id, -150, 0, 900 * NUTRIENT_SCALE);
+    const hub = world.addColony(me.id, 0, 0, 900);
+    const feeder = world.addColony(me.id, -150, 0, 900);
     world.enqueue({ type: "connect", player: me.id, from: feeder.id, to: hub.id });
     for (let i = 0; i < MAX_OUT_PIPES_PER_COLONY; i++) {
       // Offset the ring so no child lands on the feeder colony at (-150, 0).
@@ -444,7 +443,7 @@ describe("walls", () => {
 
     // The crossbar is perpendicular to its stem, so to block the a-b line the stem
     // has to run *along* it: anchor out to one side and wall at the midpoint.
-    const anchorNode = world.addColony(me.id, -600, 0, 900 * NUTRIENT_SCALE);
+    const anchorNode = world.addColony(me.id, -600, 0, 900);
     world.enqueue({ type: "wall", player: me.id, from: anchorNode.id, x: 0, y: 0 });
     world.step();
     expect(world.barriers.size).toBe(1);

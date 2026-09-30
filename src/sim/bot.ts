@@ -4,6 +4,7 @@ import {
   RIND_MULTIPLIER,
   SIPHON_MULTIPLIER,
   MAX_WALLS_PER_COLONY,
+  NODE_SPACING,
   PIPE_RATE_PER_SEC,
   REACH_BONUS,
   SIM_HZ,
@@ -59,8 +60,11 @@ const ENEMY_LOSS = 0.4;
 const KILL_BONUS = 150;
 /** A move must be worth at least this to spend an action on. */
 const MIN_VALUE = 15;
-/** Candidates checked against the full rules, best first, before giving up. */
-const MAX_CHECKED = 40;
+/**
+ * Candidates checked against the full rules, best first, before giving up. Kept
+ * generous: a run of refused moves at the top must never leave a bot idle.
+ */
+const MAX_CHECKED = 400;
 /** Keeps the frame budget: past this a bot stops throwing. */
 const MAX_COLONIES = 40;
 /** Throw directions tried from each colony, and shares of its reach. */
@@ -164,6 +168,8 @@ class Mind {
     this.attack();
     this.defend();
     this.keepAlive();
+    this.closeRings();
+    this.linkIslands();
     this.loopFalls();
     this.takeBoosts();
     this.fireFlow();
@@ -288,9 +294,10 @@ class Mind {
 
   /**
    * Upkeep. A colony that is shrinking will run dry and die, and its store and
-   * its place in the network go with it. Before that happens:
+   * its place in the network go with it. Before that happens (never by cutting a
+   * line — that only leaves stranded islands):
    * - it is spending on lines of ours: flip one whose other end has a surplus to
-   *   send back, or — when time is short — cut it;
+   *   send back;
    * - a neighbour with a surplus can feed it;
    * - nothing comes into it at all (its food ran out): send its store on to a
    *   colony that is gathering, rather than let upkeep eat it.
@@ -314,7 +321,6 @@ class Mind {
             this.world.canReverse(this.me, pipeId).ok,
           );
         }
-        if (urgent) this.add(saved, { type: "cut", player: this.me, pipe: pipeId }, () => this.world.pipes.has(pipeId));
       }
       for (const d of this.mine) {
         if (d === c || d.rate <= PIPE_RATE_PER_SEC + 1 || !this.hasSlot(d) || !this.inReach(d, c)) continue;
@@ -325,6 +331,65 @@ class Mind {
           .filter((m) => m !== c && (this.income.get(m.id) ?? 0) > 0 && this.inReach(c, m))
           .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y))[0];
         if (home) this.connect(c.nutrients * 0.8 + 30, c, home);
+      }
+    }
+  }
+
+  /**
+   * Rings (§6.6). A colony whose hyphae in cover what it sends out is sustained
+   * and pays no upkeep, so a chain closed into a cycle idles for free: its flow
+   * keeps going round while attention is elsewhere, and nothing withers. For a
+   * colony that is paying upkeep, close the cycle — a line back to it from a
+   * colony its own lines already lead to, the nearest such first.
+   */
+  private closeRings(): void {
+    const feeds = new Map<EntityId, EntityId[]>(); // our colony → our colonies it sends to
+    for (const [from, pipeIds] of this.ownOut) {
+      for (const id of pipeIds) {
+        const to = this.world.nodes.get(this.world.pipes.get(id)?.to ?? -1);
+        if (to?.kind === "colony" && to.owner === this.me) feeds.set(from, [...(feeds.get(from) ?? []), to.id]);
+      }
+    }
+    for (const c of this.mine) {
+      const ins = this.world.inCount(c.id);
+      if (ins > 0 && this.world.outCount(c.id) <= ins) continue; // already sustained
+      // Walk downstream from c; the first colony that can reach back closes the ring.
+      const depth = new Map<EntityId, number>([[c.id, 0]]);
+      const queue = [c.id];
+      while (queue.length > 0) {
+        const at = queue.shift()!;
+        const d = depth.get(at)!;
+        if (d >= 6) continue;
+        for (const next of feeds.get(at) ?? []) {
+          if (depth.has(next)) continue;
+          depth.set(next, d + 1);
+          queue.push(next);
+          const y = this.world.nodes.get(next)!;
+          if (d + 1 < 2 || !this.hasSlot(y) || !this.inReach(y, c)) continue;
+          const length = d + 2; // colonies in the ring
+          this.connect(UPKEEP_PER_SEC * HORIZON * length + this.rescueBonus(c) + 20, y, c);
+        }
+      }
+    }
+  }
+
+  /**
+   * A colony with no hyphae at all is an island: nothing reaches it, nothing
+   * leaves it, and upkeep eats it. Link it back into the network — the richer of
+   * the pair sends to the poorer — so its store is part of something again.
+   */
+  private linkIslands(): void {
+    if (this.mine.length < 2) return;
+    for (const c of this.mine) {
+      if (this.world.inCount(c.id) > 0 || this.world.outCount(c.id) > 0) continue;
+      const value = c.nutrients * 0.3 + UPKEEP_PER_SEC * HORIZON * 0.5 + 30;
+      const near = this.mine
+        .filter((m) => m !== c && (this.inReach(m, c) || this.inReach(c, m)))
+        .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y))
+        .slice(0, 3);
+      for (const m of near) {
+        const [from, to] = m.nutrients >= c.nutrients ? [m, c] : [c, m];
+        if (this.hasSlot(from)) this.connect(value, from, to);
       }
     }
   }
@@ -467,6 +532,9 @@ class Mind {
         const a = (i / THROW_DIRECTIONS) * Math.PI * 2 + (this.me % 7) * 0.1;
         for (const length of THROW_LENGTHS) {
           const spot = { x: parent.x + Math.cos(a) * r * length, y: parent.y + Math.sin(a) * r * length };
+          // Nobody may land in a rival's territory, off the map or in a wall: such
+          // spots are never priced, or they crowd every legal move off the top.
+          if (!this.world.isFreeSpot(spot, NODE_SPACING, this.me)) continue;
           const gains: number[] = [];
           for (const f of food) if (dist(spot.x, spot.y, f.node.x, f.node.y) <= childReach) gains.push(f.worth);
           for (const v of prey) {

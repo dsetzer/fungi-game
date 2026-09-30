@@ -263,8 +263,12 @@ export class Input {
       if (r.moved && r.wallFrom != null) {
         this.send({ type: "wall", player, from: r.wallFrom, ...this.cursor });
       } else if (!r.moved && !this.readOnly) {
+        // A right-click on a colony is a wall drag that didn't get going, never a
+        // cut: a colony sits on the ends of its hyphae, so "the nearest hypha" to
+        // it is its own line — quietly cutting a chain apart while walling it.
+        const onNode = this.nodeAt(this.cursor) !== undefined;
         const wall = this.wallAt(this.cursor);
-        const pipe = wall == null ? this.pipeAt(this.cursor) : null;
+        const pipe = wall == null && !onNode ? this.pipeAt(this.cursor) : null;
         if (wall != null) this.send({ type: "demolish", player, wall });
         else if (pipe != null) this.send({ type: "cut", player, pipe });
       }

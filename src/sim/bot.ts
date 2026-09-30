@@ -4,6 +4,7 @@ import {
   RIND_MULTIPLIER,
   SIPHON_MULTIPLIER,
   MAX_WALLS_PER_COLONY,
+  NUTRIENT_SCALE,
   PIPE_RATE_PER_SEC,
   REACH_BONUS,
   SIM_HZ,
@@ -51,14 +52,16 @@ export const BOT_LEVELS: Record<BotLevel, { actionsPerSecond: number; thinkSecon
   hard: { actionsPerSecond: 0.7, thinkSeconds: 0.25 },
 };
 
+/** Colony stores and fixed prices below are in the game's original units. */
+const S = NUTRIENT_SCALE;
 /** Seconds of consequence a move is priced over. */
 const HORIZON = 60;
 /** What a nutrient taken from a rival is worth on top of the nutrient itself. */
 const ENEMY_LOSS = 0.4;
 /** A rival colony removed: its income gone, its ground and falls opened up. */
-const KILL_BONUS = 150;
+const KILL_BONUS = 150 * S;
 /** A move must be worth at least this to spend an action on. */
-const MIN_VALUE = 15;
+const MIN_VALUE = 15 * S;
 /** Candidates checked against the full rules, best first, before giving up. */
 const MAX_CHECKED = 40;
 /** Keeps the frame budget: past this a bot stops throwing. */
@@ -72,8 +75,8 @@ const THROW_DELAY = 0.6;
 const FAR_BOOST_PULL = 2.5;
 /** Holding a boost, priced like nutrients. */
 const BOOST_WORTH: Record<BoostKind, number> = {
-  branch: 500, reach: 700, vision: 250, harvest: 900, siphon: 650, rind: 500, chitin: 250,
-  flow: 600, sever: 600,
+  branch: 500 * S, reach: 700 * S, vision: 250 * S, harvest: 900 * S, siphon: 650 * S,
+  rind: 500 * S, chitin: 250 * S, flow: 600 * S, sever: 600 * S,
 };
 
 /** The tick of each bot's last action, per world, so a new match starts fresh. */
@@ -205,7 +208,7 @@ class Mind {
 
   /** What a colony's losses would cost if it were drained dry by `rate`. */
   private threatened(c: GameNode, rate: number): number {
-    return Math.min(c.nutrients, rate * HORIZON) + 40;
+    return Math.min(c.nutrients, rate * HORIZON) + 40 * S;
   }
 
   private add(value: number, cmd: Command, valid: () => boolean): void {
@@ -237,7 +240,7 @@ class Mind {
   /** Every fall in reach and not yet drawn on by us, into the colony that needs it most. */
   private tapFalls(): void {
     for (const f of this.falls) {
-      if (f.nutrients < 5) continue;
+      if (f.nutrients < 5 * S) continue;
       const takers = this.reaching(f);
       if (takers.length === 0 || takers.some((c) => this.joined.has(pairKey(f.id, c.id)))) continue;
       const value = this.tapValue(f);
@@ -250,7 +253,7 @@ class Mind {
   private rescueBonus(c: GameNode): number {
     if (c.rate >= 0) return 0;
     const lasts = c.nutrients / -c.rate;
-    return lasts < HORIZON ? c.nutrients * 0.5 + 30 : 0;
+    return lasts < HORIZON ? c.nutrients * 0.5 + 30 * S : 0;
   }
 
   /**
@@ -279,7 +282,7 @@ class Mind {
     if (!this.world.holds(this.me, "sever")) return;
     for (const list of this.attackers.values()) {
       for (const a of list) {
-        this.add(this.threatened(a.victim, a.rate) + 30, { type: "sever", player: this.me, pipe: a.pipe }, () =>
+        this.add(this.threatened(a.victim, a.rate) + 30 * S, { type: "sever", player: this.me, pipe: a.pipe }, () =>
           this.world.canSever(this.me, a.pipe).ok,
         );
       }
@@ -301,7 +304,7 @@ class Mind {
       const lasts = c.nutrients / -c.rate;
       if (lasts > 90) continue;
       const urgent = lasts < 30;
-      const saved = c.nutrients * (urgent ? 1 : 0.6) + 60;
+      const saved = c.nutrients * (urgent ? 1 : 0.6) + 60 * S;
       for (const pipeId of this.ownOut.get(c.id) ?? []) {
         const pipe = this.world.pipes.get(pipeId);
         const other = pipe && this.world.nodes.get(pipe.to);
@@ -310,7 +313,7 @@ class Mind {
         // Flipped, the other end loses what it was getting and sends it instead:
         // twice the line rate worse off. Only worth it when it still has a surplus after that.
         if (other.kind === "colony" && other.rate > PIPE_RATE_PER_SEC * 2 + 1) {
-          this.add(saved + 10, { type: "reverse", player: this.me, pipe: pipeId }, () =>
+          this.add(saved + 10 * S, { type: "reverse", player: this.me, pipe: pipeId }, () =>
             this.world.canReverse(this.me, pipeId).ok,
           );
         }
@@ -324,7 +327,7 @@ class Mind {
         const home = this.mine
           .filter((m) => m !== c && (this.income.get(m.id) ?? 0) > 0 && this.inReach(c, m))
           .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y))[0];
-        if (home) this.connect(c.nutrients * 0.8 + 30, c, home);
+        if (home) this.connect(c.nutrients * 0.8 + 30 * S, c, home);
       }
     }
   }
@@ -341,7 +344,7 @@ class Mind {
   private loopFalls(): void {
     if (this.fallGain <= 1) return;
     for (const f of this.falls) {
-      if (f.nutrients > 150 || (this.drainers.get(f.id) ?? 0) !== 1) continue;
+      if (f.nutrients > 150 * S || (this.drainers.get(f.id) ?? 0) !== 1) continue;
       let into: GameNode | undefined;
       let fed = false;
       for (const p of this.world.pipes.values()) {
@@ -349,7 +352,7 @@ class Mind {
         if (p.to === f.id) fed = true;
       }
       if (!into || fed) continue;
-      const value = HORIZON * (this.fallGain - 1) * PIPE_RATE_PER_SEC + (150 - f.nutrients) * 0.3;
+      const value = HORIZON * (this.fallGain - 1) * PIPE_RATE_PER_SEC + (150 * S - f.nutrients) * 0.3;
       for (const pipeId of this.ownOut.get(into.id) ?? []) {
         const d = this.world.nodes.get(this.world.pipes.get(pipeId)?.to ?? -1);
         if (d?.kind === "colony" && d.owner === this.me && this.hasSlot(d) && this.inReach(d, f)) this.connect(value, d, f);
@@ -364,13 +367,13 @@ class Mind {
       const worth = BOOST_WORTH[b.boost] * (this.world.holds(this.me, b.boost) && b.owner !== this.me ? 0.15 : 1);
       if (b.owner == null) {
         // One tick of feeding captures it, so even a poor colony can.
-        for (const c of this.reaching(b)) if (c.nutrients > 30 && this.hasSlot(c)) this.connect(worth, c, b);
+        for (const c of this.reaching(b)) if (c.nutrients > 30 * S && this.hasSlot(c)) this.connect(worth, c, b);
       } else if (b.owner === this.me) {
         const fed = [...this.world.pipes.values()].some((p) => p.to === b.id && p.owner === this.me);
-        if (!fed && b.nutrients < 200) {
-          for (const c of this.reaching(b)) if (c.nutrients > 100 && this.hasSlot(c)) this.connect(worth * 0.6, c, b);
+        if (!fed && b.nutrients < 200 * S) {
+          for (const c of this.reaching(b)) if (c.nutrients > 100 * S && this.hasSlot(c)) this.connect(worth * 0.6, c, b);
         }
-        if (fed && b.nutrients > 250) {
+        if (fed && b.nutrients > 250 * S) {
           for (const c of this.reaching(b)) this.connect(this.tapValue(b) * 0.5, b, c);
         }
       }
@@ -400,7 +403,7 @@ class Mind {
    */
   private wall(): void {
     for (const c of this.mine) {
-      if (c.nutrients < 60 || this.world.wallCount(c.id) >= MAX_WALLS_PER_COLONY) continue;
+      if (c.nutrients < 60 * S || this.world.wallCount(c.id) >= MAX_WALLS_PER_COLONY) continue;
       for (const x of this.rivals) {
         if (x.kind !== "colony") continue;
         const d = dist(c.x, c.y, x.x, x.y);
@@ -409,7 +412,7 @@ class Mind {
         const spot = { x: c.x + ((x.x - c.x) / d) * along, y: c.y + ((x.y - c.y) / d) * along };
         const after = c.rate - PIPE_RATE_PER_SEC;
         const dies = after < 0 && c.nutrients / -after < HORIZON;
-        const value = Math.min(c.nutrients, PIPE_RATE_PER_SEC * HORIZON) * (1 + ENEMY_LOSS) + (dies ? 100 : 0) - WALL_COST;
+        const value = Math.min(c.nutrients, PIPE_RATE_PER_SEC * HORIZON) * (1 + ENEMY_LOSS) + (dies ? 100 * S : 0) - WALL_COST;
         this.add(value, { type: "wall", player: this.me, from: c.id, ...spot }, () =>
           this.world.hasLineOfSight(c, x) && !this.world.crossesHypha(c, x) && this.world.canBuildWall(this.me, c.id, spot).ok,
         );
@@ -429,7 +432,7 @@ class Mind {
   private throwColonies(): void {
     if (this.mine.length >= MAX_COLONIES) return;
     const food = [...this.falls, ...this.boosts.filter((b) => b.owner !== this.me)]
-      .filter((f) => f.nutrients >= 30 && !this.covered.has(f.id))
+      .filter((f) => f.nutrients >= 30 * S && !this.covered.has(f.id))
       // A boost far off is worth a long trip: its benefit lasts minutes, not the
       // one minute a fall's tap is priced over.
       .map((f) => ({ node: f, worth: f.kind === "boost" && f.boost ? BOOST_WORTH[f.boost] * FAR_BOOST_PULL : this.tapValue(f) }));
@@ -444,7 +447,7 @@ class Mind {
     for (const parent of this.mine) {
       if (!this.hasSlot(parent)) continue;
       const carried = this.world.ejectAmount(parent);
-      if (carried < 25) continue;
+      if (carried < 25 * S) continue;
       const childReach = reach(carried) + this.reachBonus;
       // The child is fed by a cord out of the parent, 10/s for as long as it
       // stands: a parent that can't afford that is thrown into its own decline.
@@ -453,7 +456,7 @@ class Mind {
       // Only a parent that is gathering is lost by that; one with nothing coming in
       // just moves its store forward into the child.
       const gathering = (this.income.get(parent.id) ?? 0) > 0;
-      const parentRisk = gathering && after < 0 && left / -after < HORIZON * 2 ? left * 0.5 + 40 : 0;
+      const parentRisk = gathering && after < 0 && left / -after < HORIZON * 2 ? left * 0.5 + 40 * S : 0;
       // A parent with nothing coming in is only moving its store forward: the
       // child costs nothing it wasn't already losing to upkeep.
       const cost = gathering ? UPKEEP_PER_SEC * HORIZON + parentRisk : 0;

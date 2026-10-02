@@ -92,6 +92,8 @@ export interface Memory {
   rateEma: Map<EntityId, number>;
   /** Last tick the memory was refreshed. */
   observed: number;
+  /** When a rival colony was first seen; used to add a human-like reaction delay. */
+  firstSeen: Map<EntityId, number>;
 }
 
 const memories = new WeakMap<World, Map<PlayerId, Memory>>();
@@ -114,6 +116,7 @@ export function memoryOf(world: World, player: PlayerId): Memory {
       recentFlips: new Map(),
       rateEma: new Map(),
       observed: -1,
+      firstSeen: new Map(),
     };
     byPlayer.set(player, m);
   }
@@ -140,3 +143,4 @@ export function observe(world: World, player: PlayerId, memory: Memory): void {
   for (const [k, until] of memory.recentCuts) if (until <= world.tick) memory.recentCuts.delete(k);
   for (const [k, until] of memory.recentFlips) if (until <= world.tick) memory.recentFlips.delete(k);
 }
+

@@ -176,17 +176,19 @@ export class Renderer {
   }
 
   /** Stem from the colony to the crossbar, drawn as a ⊢ like the original. */
+  /** Line widths are in screen pixels, so a wall stays readable however far out you zoom. */
   private drawWall(from: Vec, mid: Vec, a: Vec, b: Vec, color: string, alpha: number): void {
     const { ctx } = this;
+    const zoom = this.camera.zoom;
     ctx.strokeStyle = color;
-    ctx.globalAlpha = alpha * 0.7;
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.lineWidth = 3 / zoom;
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.lineTo(mid.x, mid.y);
     ctx.stroke();
     ctx.globalAlpha = alpha;
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 5 / zoom;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);

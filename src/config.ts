@@ -63,7 +63,7 @@ export const FLOW_COOLDOWN_SECONDS = 45; // counted from when Flow ends
 export const SEVER_COOLDOWN_SECONDS = 30;
 
 // §6.5 Walls — stem from a colony to a crossbar; the crossbar blocks line of sight
-export const WALL_BAR_LENGTH = 170;
+export const WALL_BAR_LENGTH = 120; // about a fifth of a long stem, as in the original
 export const WALL_COST = 15; // one-off, paid by the anchor colony
 export const MAX_WALLS_PER_COLONY = 3;
 // A new crossbar does NOT sever hyphae already crossing it: walling over your own

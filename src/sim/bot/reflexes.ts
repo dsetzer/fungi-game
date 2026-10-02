@@ -1,18 +1,8 @@
-import {
-  BOT_DRAIN_MULTIPLIER,
-  BOT_REACTION_TIME,
-  BOT_WALL_MULTIPLIER,
-  FLOW_MULTIPLIER,
-  FLOW_SECONDS,
-  PIPE_RATE_PER_SEC,
-  UPKEEP_PER_SEC,
-  WALL_COST,
-} from "../../config";
+import { FLOW_MULTIPLIER, FLOW_SECONDS, PIPE_RATE_PER_SEC, UPKEEP_PER_SEC, WALL_COST } from "../../config";
 import { dist } from "../geometry";
 import type { EntityId, GameNode } from "../types";
 import type { Board } from "./board";
 import { COLONY, HORIZON, LINE, THROW_DELAY, pairKey, seconds, type Candidate } from "./core";
-import type { BotLevel } from "./index";
 
 const RATE = PIPE_RATE_PER_SEC;
 
@@ -22,26 +12,32 @@ const RATE = PIPE_RATE_PER_SEC;
  * fighting what's in reach. Tasks carry the multi-step plans; these keep the
  * network healthy between them.
  */
-export function reflexes(board: Board, level: BotLevel): Candidate[] {
+export function reflexes(board: Board): Candidate[] {
   const out: Candidate[] = [];
   const push = (c: Candidate | null) => {
     if (c) out.push(c);
   };
   tap(board, push);
-  drainRivals(board, push, level);
+  drainRivals(board, push);
   stripBoosts(board, push);
   supply(board, push);
   reverse(board, push);
   rings(board, push);
   relink(board, push);
   saveHubs(board, push);
-  walls(board, push, level);
+  walls(board, push);
   flow(board, push);
   nearThrows(board, push);
   return out;
 }
 
 type Push = (c: Candidate | null) => void;
+
+/** Marks a move as a response to rivals' nodes or lines (see Candidate.reactsTo). */
+function reacting(c: Candidate | null, ...keys: string[]): Candidate | null {
+  if (c) c.reactsTo = keys;
+  return c;
+}
 
 // ---------- economy ----------
 
@@ -65,23 +61,18 @@ function tap(board: Board, push: Push): void {
  * can never drain that colony of ours back. Joining a funnel already on a victim
  * is worth more: the lines add up to a kill.
  */
-function drainRivals(board: Board, push: Push, level: BotLevel): void {
+function drainRivals(board: Board, push: Push): void {
   for (const v of board.rivals) {
     if (v.kind !== "colony") continue;
-
-    const seenAt = board.memory.firstSeen.get(v.id);
-    if (seenAt === undefined) board.memory.firstSeen.set(v.id, board.tick);
-    else {
-      const delay = BOT_REACTION_TIME[level];
-      if (board.tick - seenAt < seconds(delay)) continue;
-    }
-
-    let value = board.drainValue(v) * 0.8 * BOT_DRAIN_MULTIPLIER[level];
+    // Temperament (profile.ts): hard latches on on sight, easy would rather wall.
+    let value = board.drainValue(v) * 0.8 * board.profile.drainBias;
     if (board.myDrains.has(v.id)) value += COLONY * 0.2;
-    for (const a of board.attacks) if (a.attacker.id === v.id) value += board.stake(a.victim, a.rate) * 0.6;
+    const answering = board.attacks.filter((a) => a.attacker.id === v.id);
+    for (const a of answering) value += board.stake(a.victim, a.rate) * 0.6;
     const hunters = board.reaching(v).sort((a, b) => b.nutrients - a.nutrients).slice(0, 3);
-    const category = board.attacks.some((a) => a.attacker.id === v.id) ? "defend" : "fight";
-    for (const h of hunters) push(board.connect(value, v, h, category, `drain ${v.id}`));
+    const category = answering.length > 0 ? "defend" : "fight";
+    const stimuli = [`node:${v.id}`, ...answering.map((a) => `pipe:${a.pipe.id}`)];
+    for (const h of hunters) push(reacting(board.connect(value, v, h, category, `drain ${v.id}`), ...stimuli));
   }
 }
 
@@ -90,7 +81,7 @@ function stripBoosts(board: Board, push: Push): void {
   for (const b of board.rivalBoosts) {
     if (!b.boost) continue;
     const value = board.tapValue(b) + board.boostWorth(b.boost) * 0.5;
-    for (const c of board.reaching(b).slice(0, 2)) push(board.connect(value, b, c, "boost", `strip boost ${b.id}`));
+    for (const c of board.reaching(b).slice(0, 2)) push(reacting(board.connect(value, b, c, "boost", `strip boost ${b.id}`), `node:${b.id}`));
   }
 }
 
@@ -231,25 +222,26 @@ function saveHubs(board: Board, push: Push): void {
  * can't reach back (where it can, draining is the better answer), and across
  * the line from a rival colony to a fall we depend on.
  */
-function walls(board: Board, push: Push, level: BotLevel): void {
-  const wallMultiplier = BOT_WALL_MULTIPLIER[level];
-
+function walls(board: Board, push: Push): void {
+  // Temperament (profile.ts): a defensive bot walls any rival off on sight — even
+  // one it could drain instead — and guards more of its colonies.
+  const { wallBias, wallsFirst } = board.profile;
   for (const i of board.info.values()) {
     const x = i.node;
-    const valuable = x.nutrients >= COLONY || i.income > 0;
+    const valuable = x.nutrients >= (wallsFirst ? COLONY * 0.3 : COLONY) || i.income > 0;
     if (!valuable || !board.canWallFrom(x)) continue;
     for (const a of board.rivals) {
       if (a.kind !== "colony" || board.joined.has(pairKey(x.id, a.id))) continue;
       const d = dist(x.x, x.y, a.x, a.y);
-      if (d > board.world.reachOf(a) || d <= board.world.reachOf(x)) continue;
+      if (d > board.world.reachOf(a)) continue;
+      if (d <= board.world.reachOf(x) && !wallsFirst) continue; // draining it is the better answer
       if (!board.world.hasLineOfSight(x, a) || board.world.crossesHypha(x, a)) continue;
       const rate = board.rateOnMe(a.owner!);
-      const value = (Math.min(x.nutrients, rate * HORIZON) + i.income * HORIZON * 0.3) * 0.5 - WALL_COST;
+      const value = ((Math.min(x.nutrients, rate * HORIZON) + i.income * HORIZON * 0.3) * 0.5 - WALL_COST) * wallBias;
       const wall = board.wallAcross(x, a);
-      if (wall) push(wallCandidate(board, value * wallMultiplier, wall, `wall off ${a.id}`));
+      if (wall) push(reacting(wallCandidate(board, value, wall, `wall off ${a.id}`), `node:${a.id}`));
     }
   }
-
   for (const f of board.falls) {
     if (!board.tapping(f) || f.nutrients < 100) continue;
     for (const a of board.rivals) {
@@ -257,7 +249,7 @@ function walls(board: Board, push: Push, level: BotLevel): void {
       if (dist(f.x, f.y, a.x, a.y) > board.world.reachOf(a)) continue;
       if (!board.world.hasLineOfSight(f, a) || board.world.crossesHypha(f, a)) continue;
       const wall = board.wallAcross(f, a);
-      if (wall) push(wallCandidate(board, Math.min(f.nutrients, LINE) * 0.4 - WALL_COST, wall, `guard fall ${f.id}`));
+      if (wall) push(reacting(wallCandidate(board, (Math.min(f.nutrients, LINE) * 0.4 - WALL_COST) * wallBias, wall, `guard fall ${f.id}`), `node:${a.id}`));
     }
   }
 }

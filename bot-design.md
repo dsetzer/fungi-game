@@ -22,6 +22,24 @@ sight. This is the spec the code in `src/sim/bot/` implements.
   to and its progress, targets it gave up on, and pairs it recently cut (so it
   doesn't relink them straight back).
 
+## Difficulty
+
+Every level plays the same brain; three things set them apart (`profile.ts`):
+
+| | Hands | Reaction | Temperament |
+|---|---|---|---|
+| Easy | an action every 5 s | 5 s | Defensive: walls a rival off on sight, even one it could drain; drains reluctantly; never goes to war |
+| Normal | every 2 s | 3 s | Balanced |
+| Hard | every 1.4 s | 1.5 s | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less |
+
+**Reaction is not the action gap.** It is how long after something new appears
+before the bot may respond to it at all: a rival colony coming within reach of one
+of its colonies (or one of its colonies within reach of the rival), or a rival line
+starting to drain it. Without it a bot latched onto a freshly thrown colony before a
+person could even see it land. Every move aimed at a rival — draining, walling,
+severing, sieges, counter-attacks — waits for it; the clock restarts if contact is
+lost and found again.
+
 ## Architecture
 
 Three layers, re-run every time a bot looks (`src/sim/bot/`):

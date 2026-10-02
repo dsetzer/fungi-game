@@ -139,7 +139,14 @@ export class SeverPlan implements Task {
   readonly started: number;
   private wallTries = 0;
 
-  constructor(readonly pipeId: EntityId, readonly stake: () => number, readonly why: string, tick: number) {
+  constructor(
+    readonly pipeId: EntityId,
+    readonly stake: () => number,
+    readonly why: string,
+    tick: number,
+    /** What the plan responds to (Candidate.reactsTo): it waits out the bot's reaction time. */
+    readonly reactsTo: string[] = [],
+  ) {
     this.key = `sever:${pipeId}`;
     this.started = tick;
   }
@@ -165,13 +172,13 @@ export class SeverPlan implements Task {
         return [];
       }
       return [{
-        value: stake * 0.9, cmd: wall, category: "defend", why: `${this.key} wall (${this.why})`,
+        value: stake * 0.9, cmd: wall, category: "defend", why: `${this.key} wall (${this.why})`, reactsTo: this.reactsTo,
         valid: () => wall.type === "wall" && board.world.canBuildWall(board.me, wall.from, wall).ok,
       }];
     }
     if (!board.world.canSever(board.me, pipe.id).ok) return []; // recharging: wait, the wall holds
     return [{
-      value: stake + COLONY * 0.3, category: "defend", why: `${this.key} sever (${this.why})`,
+      value: stake + COLONY * 0.3, category: "defend", why: `${this.key} sever (${this.why})`, reactsTo: this.reactsTo,
       cmd: { type: "sever", player: board.me, pipe: pipe.id },
       valid: () => board.world.canSever(board.me, pipe.id).ok && !board.world.hasLineOfSight(a, b),
       onChosen: () => {
@@ -360,8 +367,8 @@ export class Siege implements Task {
     this.state = shrinking ? "finish" : "funnel";
     // More lines on it, from every colony of ours that can reach.
     for (const h of board.reaching(v)) {
-      const cand = board.connect(board.drainValue(v) + COLONY * 0.3, v, h, "fight", `${this.key} funnel`);
-      if (cand) out.push(cand);
+      const cand = board.connect(board.drainValue(v) * board.profile.drainBias + COLONY * 0.3, v, h, "fight", `${this.key} funnel`);
+      if (cand) out.push({ ...cand, reactsTo: [`node:${v.id}`] });
     }
     // Its reinforcements: sever them, wall first.
     if (board.holds("sever")) {
@@ -369,7 +376,7 @@ export class Siege implements Task {
         if (p.owner !== v.owner) continue;
         const key = `sever:${p.id}`;
         if (memory.tasks.some((t) => t.key === key) || memory.gaveUp.has(key)) continue;
-        memory.tasks.push(new SeverPlan(p.id, () => LINE * 0.5, "reinforcing a siege", board.tick));
+        memory.tasks.push(new SeverPlan(p.id, () => LINE * 0.5, "reinforcing a siege", board.tick, [`node:${v.id}`]));
       }
     }
     // Finish it with Flow when doubling our lines ends it inside the window.
@@ -381,6 +388,7 @@ export class Siege implements Task {
           value: COLONY + v.nutrients * 0.5, category: "fight", why: `${this.key} flow to finish`,
           cmd: { type: "flow", player: board.me },
           valid: () => board.world.canFlow(board.me).ok,
+          reactsTo: [`node:${v.id}`],
         });
       }
     }

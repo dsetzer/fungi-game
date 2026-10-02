@@ -24,11 +24,13 @@ import {
   KILL,
   LINE,
   pairKey,
+  seconds,
   type Candidate,
   type Category,
   type Memory,
 } from "./core";
 import { navFor, type NavGrid } from "./nav";
+import { BOT_LEVELS, type BotProfile } from "./profile";
 
 const RATE = PIPE_RATE_PER_SEC;
 
@@ -101,7 +103,12 @@ export class Board {
     localEnemyStore: 0,
   };
 
-  constructor(readonly world: World, readonly me: PlayerId, readonly memory: Memory) {
+  constructor(
+    readonly world: World,
+    readonly me: PlayerId,
+    readonly memory: Memory,
+    readonly profile: BotProfile = BOT_LEVELS.normal,
+  ) {
     this.tick = world.tick;
     this.nav = navFor(world.arena);
     for (const n of world.nodes.values()) {
@@ -147,8 +154,11 @@ export class Board {
       } else if (from.owner === me) {
         const attack: Attack = { pipe: p, victim: from, attacker: to, rate: this.rateOnMe(p.owner) };
         this.attacks.push(attack);
-        fromInfo?.attackedBy.push(attack);
-        this.stats.drainOnMe += attack.rate;
+        // Only what it has had time to react to shapes the bot's mood and needs.
+        if (this.ready(`pipe:${p.id}`)) {
+          fromInfo?.attackedBy.push(attack);
+          this.stats.drainOnMe += attack.rate;
+        }
       }
     }
     for (const i of this.info.values()) {
@@ -165,6 +175,15 @@ export class Board {
       if (this.mine.some((c) => this.inReach(c, v))) this.stats.preyInReach++;
       if (this.mine.some((c) => dist(c.x, c.y, v.x, v.y) < 1500)) this.stats.localEnemyStore += v.nutrients;
     }
+  }
+
+  /**
+   * Whether the bot has had its reaction time since this appeared (profile.ts):
+   * `node:<id>` for a rival in contact, `pipe:<id>` for a line draining us.
+   */
+  ready(key: string): boolean {
+    const since = this.memory.noticed.get(key);
+    return since !== undefined && this.tick - since >= seconds(this.profile.reactionSeconds);
   }
 
   // ---------- the network ----------

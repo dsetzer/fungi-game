@@ -125,23 +125,6 @@ export const CAMERA_FLY_ON_EJECT = true;
 export const PLAYER_COUNT = 4; // player 1 is human, the rest are bots
 export const ROUND_RESTART_DELAY_MS = 4000;
 
-// Bot reaction / aggression tuning by level.
-export const BOT_REACTION_TIME: Record<"easy" | "normal" | "hard", number> = {
-  easy: 1.5,
-  normal: 0.8,
-  hard: 0.3,
-};
-export const BOT_DRAIN_MULTIPLIER: Record<"easy" | "normal" | "hard", number> = {
-  easy: 0.6,
-  normal: 0.9,
-  hard: 1.2,
-};
-export const BOT_WALL_MULTIPLIER: Record<"easy" | "normal" | "hard", number> = {
-  easy: 1.3,
-  normal: 1.0,
-  hard: 0.75,
-};
-
 // Nodes are points: a fixed-size core dot (used for hit-testing and spacing).
 export const NODE_CORE_RADIUS = 7;
 export const NODE_SPACING = 22; // min clearance between a new node and existing cores

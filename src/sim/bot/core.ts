@@ -1,4 +1,5 @@
 import { PIPE_RATE_PER_SEC, SIM_HZ } from "../../config";
+import { dist } from "../geometry";
 import type { BoostKind, Command, EntityId, PlayerId } from "../types";
 import type { World } from "../world";
 
@@ -57,6 +58,12 @@ export interface Candidate {
   why: string;
   /** Runs when this candidate is the one acted on (e.g. remember a cut). */
   onChosen?: () => void;
+  /**
+   * What this move responds to — `node:<id>` for a rival node in contact,
+   * `pipe:<id>` for a rival line draining us. It may only be made once the bot
+   * has had its reaction time since each of them appeared (profile.ts).
+   */
+  reactsTo?: string[];
 }
 
 // ---------- memory ----------
@@ -92,8 +99,12 @@ export interface Memory {
   rateEma: Map<EntityId, number>;
   /** Last tick the memory was refreshed. */
   observed: number;
-  /** When a rival colony was first seen; used to add a human-like reaction delay. */
-  firstSeen: Map<EntityId, number>;
+  /**
+   * When each thing the bot must react to first appeared: a rival node coming
+   * into contact (`node:<id>`), a rival line starting to drain us (`pipe:<id>`).
+   * Dropped when contact ends, so a fresh contact needs a fresh reaction.
+   */
+  noticed: Map<string, number>;
 }
 
 const memories = new WeakMap<World, Map<PlayerId, Memory>>();
@@ -116,7 +127,7 @@ export function memoryOf(world: World, player: PlayerId): Memory {
       recentFlips: new Map(),
       rateEma: new Map(),
       observed: -1,
-      firstSeen: new Map(),
+      noticed: new Map(),
     };
     byPlayer.set(player, m);
   }
@@ -142,5 +153,30 @@ export function observe(world: World, player: PlayerId, memory: Memory): void {
   for (const [k, until] of memory.gaveUp) if (until <= world.tick) memory.gaveUp.delete(k);
   for (const [k, until] of memory.recentCuts) if (until <= world.tick) memory.recentCuts.delete(k);
   for (const [k, until] of memory.recentFlips) if (until <= world.tick) memory.recentFlips.delete(k);
+  notice(world, player, memory);
 }
 
+/** How close, beyond whichever side reaches further, counts as contact. */
+const CONTACT_MARGIN = 100;
+
+/**
+ * Stimuli the bot reacts to (profile.ts, Reaction): a rival colony or boost
+ * coming within reach of one of ours, or one of ours within its reach — the
+ * moment either side could act on the other — and a rival line draining one of
+ * ours. Each is stamped the first look it's there and forgotten when it goes.
+ */
+function notice(world: World, player: PlayerId, memory: Memory): void {
+  const mine = [...world.nodes.values()].filter((n) => n.owner === player && n.kind === "colony");
+  const present = new Set<string>();
+  for (const v of world.nodes.values()) {
+    if (v.owner == null || v.owner === player || v.kind === "fall") continue;
+    const reachV = world.reachOf(v);
+    const inContact = mine.some((c) => dist(c.x, c.y, v.x, v.y) <= Math.max(world.reachOf(c), reachV) + CONTACT_MARGIN);
+    if (inContact) present.add(`node:${v.id}`);
+  }
+  for (const p of world.pipes.values()) {
+    if (p.owner !== player && world.nodes.get(p.from)?.owner === player) present.add(`pipe:${p.id}`);
+  }
+  for (const k of present) if (!memory.noticed.has(k)) memory.noticed.set(k, world.tick);
+  for (const k of memory.noticed.keys()) if (!present.has(k)) memory.noticed.delete(k);
+}

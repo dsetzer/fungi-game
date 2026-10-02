@@ -142,8 +142,10 @@ carry multi-step plans as state machines — expeditions that path round terrain
 Harvest loops, boost holds, sieges; **reflexes** keep the network healthy — taps, supply lines,
 reversals, rings, relinking pieces, walls, drains, Flow. Every candidate is priced on one scale,
 weighted by the posture, checked against the rules best-first, and the best legal one is taken.
-Eyes are instant, hands are slow: one action at a time with a gap after each (Easy 5 s,
-Normal 2 s, Hard 1.4 s). A bot stops throwing at 40 colonies.
+Difficulty is hands, reaction and temperament: one action at a time with a gap after each
+(Easy 5 s, Normal 2 s, Hard 1.4 s); a reaction delay before answering anything new that comes
+into contact (5 s, 3 s, 1.5 s); and what it reaches for — easy walls rivals off on sight, hard
+latches on and drains them. A bot stops throwing at 40 colonies.
 
 ## Decisions made for open design items
 

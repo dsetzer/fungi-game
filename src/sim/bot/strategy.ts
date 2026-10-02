@@ -40,7 +40,8 @@ export function choosePosture(board: Board, memory: Memory): Posture {
   else if (board.tick < seconds(60) && count <= 4) next = "opening";
   else if (s.starving > count * 0.3 || board.pieces.size > Math.max(2, count / 4)) next = "consolidate";
   // War only with a real edge: rivals in reach and clearly more to fight with.
-  else if (s.preyInReach > 0 && s.store >= s.localEnemyStore * 1.5) next = "war";
+  // How big an edge it takes is temperament (profile.ts): easy never goes to war.
+  else if (s.preyInReach > 0 && s.store >= s.localEnemyStore * board.profile.warEdge) next = "war";
   else next = "expand";
   const held = board.tick - memory.postureSince < seconds(HOLD_SECONDS);
   if (next !== memory.posture && (!held || next === "defend")) {
@@ -61,7 +62,7 @@ export function planTasks(board: Board, memory: Memory): void {
     for (const a of board.attacks) {
       const key = `sever:${a.pipe.id}`;
       if (has(key) || board.holds("chitin", a.pipe.owner)) continue;
-      memory.tasks.push(new SeverPlan(a.pipe.id, () => board.stake(a.victim, a.rate), "draining us", board.tick));
+      memory.tasks.push(new SeverPlan(a.pipe.id, () => board.stake(a.victim, a.rate), "draining us", board.tick, [`pipe:${a.pipe.id}`]));
     }
   }
 

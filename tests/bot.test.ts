@@ -193,4 +193,45 @@ describe("bot behaviour (bot-design.md)", () => {
     expect(world.hasLineOfSight(hub, threat)).toBe(false);
     expect(world.canConnect(rival.id, hub.id, threat.id).ok).toBe(false);
   });
+
+  it("waits its reaction time before answering a colony that lands in reach", () => {
+    for (const level of ["hard", "normal", "easy"] as const) {
+      const { world, bot, rival } = duel();
+      world.addColony(bot.id, 0, 0, 2000);
+      world.addFall(-200, 0, 5000);
+      for (let i = 0; i < 5 * SIM_HZ; i++) {
+        runBot(world, bot.id, level);
+        world.step();
+      }
+      // A rival colony lands right next to it.
+      const landed = world.tick;
+      const intruder = world.addColony(rival.id, 300, 0, 400);
+      const log = recorder(world);
+      for (let i = 0; i < 12 * SIM_HZ; i++) {
+        runBot(world, bot.id, level);
+        world.step();
+      }
+      const answer = log.find((e) =>
+        (e.cmd.type === "connect" && (e.cmd.from === intruder.id || e.cmd.to === intruder.id)) || e.cmd.type === "wall");
+      expect(answer, level).toBeDefined();
+      expect((answer!.tick - landed) / SIM_HZ, level).toBeGreaterThanOrEqual(BOT_LEVELS[level].reactionSeconds);
+    }
+  });
+
+  it("easy walls a rival off on sight; hard latches on and drains it", () => {
+    const answer = (level: "easy" | "hard") => {
+      const { world, bot, rival } = duel();
+      world.addColony(bot.id, 0, 0, 1500);
+      world.addFall(-200, 0, 5000);
+      const intruder = world.addColony(rival.id, 330, 0, 600);
+      const log = recorder(world);
+      for (let i = 0; i < 25 * SIM_HZ; i++) {
+        runBot(world, bot.id, level);
+        world.step();
+      }
+      return log.find((e) => e.cmd.type === "wall" || (e.cmd.type === "connect" && e.cmd.from === intruder.id))?.cmd.type;
+    };
+    expect(answer("easy")).toBe("wall");
+    expect(answer("hard")).toBe("connect");
+  });
 });

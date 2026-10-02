@@ -92,9 +92,6 @@ export interface Memory {
   gaveUp: Map<string, number>;
   /** Pairs we cut on purpose, until this tick — don't link them straight back. */
   recentCuts: Map<string, number>;
-  /** Hyphae we flipped, until this tick — a flip changes both ends' needs, so
-   *  without this it immediately looks worth flipping back. */
-  recentFlips: Map<EntityId, number>;
   /** Each colony's net rate, smoothed over the last second or so. */
   rateEma: Map<EntityId, number>;
   /** Last tick the memory was refreshed. */
@@ -124,7 +121,6 @@ export function memoryOf(world: World, player: PlayerId): Memory {
       tasks: [],
       gaveUp: new Map(),
       recentCuts: new Map(),
-      recentFlips: new Map(),
       rateEma: new Map(),
       observed: -1,
       noticed: new Map(),
@@ -152,7 +148,6 @@ export function observe(world: World, player: PlayerId, memory: Memory): void {
   for (const id of memory.rateEma.keys()) if (!seen.has(id)) memory.rateEma.delete(id);
   for (const [k, until] of memory.gaveUp) if (until <= world.tick) memory.gaveUp.delete(k);
   for (const [k, until] of memory.recentCuts) if (until <= world.tick) memory.recentCuts.delete(k);
-  for (const [k, until] of memory.recentFlips) if (until <= world.tick) memory.recentFlips.delete(k);
   notice(world, player, memory);
 }
 

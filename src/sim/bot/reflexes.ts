@@ -108,24 +108,36 @@ function supply(board: Board, push: Push): void {
   }
 }
 
+/** A flip triggers when the sending end would run dry within this… */
+const FLIP_TRIGGER_SECONDS = 45;
+/** …and only if, after it, the new sending end would still last at least this. */
+const FLIP_MARGIN_SECONDS = 90;
+
 /**
- * A line of ours flowing from a needy colony into a comfortable one gets flipped
- * — but only if the comfortable end can afford to become the source (flipped, it
- * loses what it was getting and sends it instead: twice the line rate worse
- * off), and not a line flipped in the last ten seconds, or the two ends' needs
- * swap and it flips straight back.
+ * A line of ours draining a colony that's running dry, into one that isn't,
+ * gets flipped — judged by what the flip leads to, not by how things look now.
+ * Flipping swings both ends by twice the line rate (the sender stops losing a
+ * line and starts gaining one; the receiver the reverse), so a rule that only
+ * compared the two ends as they are would flip, see the roles swapped, and flip
+ * straight back. Instead the flip must leave the sender no longer running dry
+ * and the new sender with a comfortable margin — wider than the trigger, so
+ * nothing wants to undo it the moment it's made.
  */
 function reverse(board: Board, push: Push): void {
+  const lasts = (n: GameNode, rate: number) => (rate >= 0 ? Infinity : n.nutrients / -rate);
   for (const i of board.info.values()) {
+    const underAttack = i.attackedBy.length > 0;
+    if (i.lasts >= FLIP_TRIGGER_SECONDS && !underAttack) continue;
     for (const p of i.feedsColonies) {
       const to = board.info.get(p.to);
-      if (!to || i.need - to.need < 3 || to.need > 0 || board.memory.recentFlips.has(p.id)) continue;
-      if (to.rate - RATE * 2 < 0 && to.node.nutrients < COLONY * 2) continue;
+      if (!to || to.attackedBy.length > 0) continue;
+      const swing = RATE * 2 * (board.world.flowActive(board.me) ? FLOW_MULTIPLIER : 1);
+      if (lasts(i.node, i.rate + swing) < FLIP_TRIGGER_SECONDS) continue; // wouldn't save it
+      if (lasts(to.node, to.rate - swing) < FLIP_MARGIN_SECONDS) continue; // would only move the problem
       push({
         value: LINE * 0.25 + board.rescueBonus(i.node), category: "network", why: `reverse ${p.id}`,
         cmd: { type: "reverse", player: board.me, pipe: p.id },
         valid: () => board.world.canReverse(board.me, p.id).ok,
-        onChosen: () => board.memory.recentFlips.set(p.id, board.tick + seconds(10)),
       });
     }
   }

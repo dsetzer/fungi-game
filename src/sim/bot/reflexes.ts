@@ -112,7 +112,7 @@ function supply(board: Board, push: Push): void {
  * A line of ours flowing from a needy colony into a comfortable one gets flipped
  * — but only if the comfortable end can afford to become the source (flipped, it
  * loses what it was getting and sends it instead: twice the line rate worse
- * off), and not a line flipped in the last minute, or the two ends' needs
+ * off), and not a line flipped in the last ten seconds, or the two ends' needs
  * swap and it flips straight back.
  */
 function reverse(board: Board, push: Push): void {
@@ -125,7 +125,7 @@ function reverse(board: Board, push: Push): void {
         value: LINE * 0.25 + board.rescueBonus(i.node), category: "network", why: `reverse ${p.id}`,
         cmd: { type: "reverse", player: board.me, pipe: p.id },
         valid: () => board.world.canReverse(board.me, p.id).ok,
-        onChosen: () => board.memory.recentFlips.set(p.id, board.tick + seconds(60)),
+        onChosen: () => board.memory.recentFlips.set(p.id, board.tick + seconds(10)),
       });
     }
   }

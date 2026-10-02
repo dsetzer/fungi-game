@@ -50,7 +50,7 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
 
   const board = new Board(world, player, memory);
   if (board.mine.length === 0) return;
-  const choice = decide(board);
+  const choice = decide(board, level);
   if (!choice) return;
   world.enqueue(choice.cmd);
   choice.onChosen?.();
@@ -58,14 +58,14 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
 }
 
 /** Every move the bot could make right now, weighted and ranked; the best legal one. */
-export function decide(board: Board): Candidate | null {
+export function decide(board: Board, level: BotLevel = "normal"): Candidate | null {
   const memory = board.memory;
   const posture = choosePosture(board, memory);
   planTasks(board, memory);
   const candidates: Candidate[] = [];
   for (const task of memory.tasks) if (!task.done) candidates.push(...task.step(board, memory));
   board.computeNeeds(); // after expeditions have named their leads
-  candidates.push(...reflexes(board));
+  candidates.push(...reflexes(board, level));
 
   const weights = WEIGHTS[posture];
   for (const c of candidates) c.value *= weights[c.category];

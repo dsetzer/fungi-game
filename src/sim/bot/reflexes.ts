@@ -1,8 +1,18 @@
-import { FLOW_MULTIPLIER, FLOW_SECONDS, PIPE_RATE_PER_SEC, UPKEEP_PER_SEC, WALL_COST } from "../../config";
+import {
+  BOT_DRAIN_MULTIPLIER,
+  BOT_REACTION_TIME,
+  BOT_WALL_MULTIPLIER,
+  FLOW_MULTIPLIER,
+  FLOW_SECONDS,
+  PIPE_RATE_PER_SEC,
+  UPKEEP_PER_SEC,
+  WALL_COST,
+} from "../../config";
 import { dist } from "../geometry";
 import type { EntityId, GameNode } from "../types";
 import type { Board } from "./board";
 import { COLONY, HORIZON, LINE, THROW_DELAY, pairKey, seconds, type Candidate } from "./core";
+import type { BotLevel } from "./index";
 
 const RATE = PIPE_RATE_PER_SEC;
 
@@ -12,20 +22,20 @@ const RATE = PIPE_RATE_PER_SEC;
  * fighting what's in reach. Tasks carry the multi-step plans; these keep the
  * network healthy between them.
  */
-export function reflexes(board: Board): Candidate[] {
+export function reflexes(board: Board, level: BotLevel): Candidate[] {
   const out: Candidate[] = [];
   const push = (c: Candidate | null) => {
     if (c) out.push(c);
   };
   tap(board, push);
-  drainRivals(board, push);
+  drainRivals(board, push, level);
   stripBoosts(board, push);
   supply(board, push);
   reverse(board, push);
   rings(board, push);
   relink(board, push);
   saveHubs(board, push);
-  walls(board, push);
+  walls(board, push, level);
   flow(board, push);
   nearThrows(board, push);
   return out;
@@ -55,10 +65,18 @@ function tap(board: Board, push: Push): void {
  * can never drain that colony of ours back. Joining a funnel already on a victim
  * is worth more: the lines add up to a kill.
  */
-function drainRivals(board: Board, push: Push): void {
+function drainRivals(board: Board, push: Push, level: BotLevel): void {
   for (const v of board.rivals) {
     if (v.kind !== "colony") continue;
-    let value = board.drainValue(v) * 0.8;
+
+    const seenAt = board.memory.firstSeen.get(v.id);
+    if (seenAt === undefined) board.memory.firstSeen.set(v.id, board.tick);
+    else {
+      const delay = BOT_REACTION_TIME[level];
+      if (board.tick - seenAt < seconds(delay)) continue;
+    }
+
+    let value = board.drainValue(v) * 0.8 * BOT_DRAIN_MULTIPLIER[level];
     if (board.myDrains.has(v.id)) value += COLONY * 0.2;
     for (const a of board.attacks) if (a.attacker.id === v.id) value += board.stake(a.victim, a.rate) * 0.6;
     const hunters = board.reaching(v).sort((a, b) => b.nutrients - a.nutrients).slice(0, 3);
@@ -213,7 +231,9 @@ function saveHubs(board: Board, push: Push): void {
  * can't reach back (where it can, draining is the better answer), and across
  * the line from a rival colony to a fall we depend on.
  */
-function walls(board: Board, push: Push): void {
+function walls(board: Board, push: Push, level: BotLevel): void {
+  const wallMultiplier = BOT_WALL_MULTIPLIER[level];
+
   for (const i of board.info.values()) {
     const x = i.node;
     const valuable = x.nutrients >= COLONY || i.income > 0;
@@ -226,9 +246,10 @@ function walls(board: Board, push: Push): void {
       const rate = board.rateOnMe(a.owner!);
       const value = (Math.min(x.nutrients, rate * HORIZON) + i.income * HORIZON * 0.3) * 0.5 - WALL_COST;
       const wall = board.wallAcross(x, a);
-      if (wall) push(wallCandidate(board, value, wall, `wall off ${a.id}`));
+      if (wall) push(wallCandidate(board, value * wallMultiplier, wall, `wall off ${a.id}`));
     }
   }
+
   for (const f of board.falls) {
     if (!board.tapping(f) || f.nutrients < 100) continue;
     for (const a of board.rivals) {

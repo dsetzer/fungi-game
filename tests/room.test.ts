@@ -45,16 +45,40 @@ describe("server room", () => {
     }
   });
 
-  it("respawns a player whose network is wiped out", () => {
+  it("leaves a wiped-out player out until they ask to play again", () => {
     const room = new Room();
     const a = joinRoom(room, "A");
+    const first = a.player!;
+    const color = room.world.player(first)!.color;
     for (const n of [...room.world.nodes.values()]) {
       if (n.owner === a.player) room.world.nodes.delete(n.id);
     }
-    room.step();
-    const mine = [...room.world.nodes.values()].filter((n) => n.owner === a.player);
-    expect(mine).toHaveLength(1);
-    expect(room.intermission).toBe(false);
+    for (let i = 0; i < 20; i++) room.step();
+    expect([...room.world.nodes.values()].filter((n) => n.owner === first)).toHaveLength(0);
+    expect(room.world.player(first)!.alive).toBe(false);
+    expect(room.playerDTOs().find((p) => p.id === first)?.alive).toBe(false); // listed as out
+
+    room.respawn(a);
+    expect(a.player).not.toBe(first); // a new life, a fresh record
+    expect(a.inbox.at(-1)).toEqual({ t: "spawned", you: a.player });
+    expect([...room.world.nodes.values()].filter((n) => n.owner === a.player)).toHaveLength(1);
+    expect(room.world.player(a.player!)!.color).toBe(color);
+    expect(room.world.player(first)).toBeUndefined(); // not listed once per life
+    expect(room.world.stats.has(first)).toBe(false);
+
+    // Asking again while alive does nothing.
+    const now = a.player;
+    room.respawn(a);
+    expect(a.player).toBe(now);
+  });
+
+  it("tells each player their id when a new round starts", () => {
+    const room = new Room();
+    const a = joinRoom(room, "A");
+    const b = joinRoom(room, "B");
+    room.leave(a);
+    room.startRound();
+    expect(b.inbox.at(-1)).toMatchObject({ t: "round", you: b.player });
   });
 
   it("ends the round on the timer, then starts a fresh one", () => {

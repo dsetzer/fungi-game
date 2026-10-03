@@ -34,9 +34,10 @@ export interface Member {
 }
 
 /**
- * One shared arena. Rounds run on a timer (players respawn instantly, so
- * "last network standing" can't end one) and the winner is whoever gathered the
- * most. The arena is regenerated between rounds, sized for the players present.
+ * One shared arena. Rounds run on a timer and the winner is whoever gathered the
+ * most; players come and go throughout, so "last network standing" can't end one.
+ * A wiped-out player is out until they ask to respawn into the running round.
+ * The arena is regenerated between rounds, sized for the players present.
  */
 export class Room {
   world!: World;
@@ -95,7 +96,28 @@ export class Room {
     const info = this.roundInfo();
     const players = this.playerDTOs();
     const winnerDTO = winner ? toPlayerDTO(winner) : null;
-    for (const m of this.members) m.send({ t: "round", round: info, players, winner: winnerDTO });
+    // Player ids are handed out afresh each round, so everyone is told theirs.
+    for (const m of this.members) {
+      m.send({ t: "round", round: info, players, winner: winnerDTO, you: m.player ?? 0 });
+    }
+  }
+
+  /**
+   * Play again after being wiped out: a fresh colony in the running round, as a
+   * new player with a fresh record (keeping their colour). The old, dead entry
+   * is dropped so the leaderboard doesn't list one person once per life.
+   */
+  respawn(m: Member): void {
+    if (m.spectator || this.intermission) return;
+    const old = m.player == null ? undefined : this.world.player(m.player);
+    if (old?.alive) return;
+    if (old) {
+      this.world.players.splice(this.world.players.indexOf(old), 1);
+      this.world.stats.delete(old.id);
+    }
+    this.join(m);
+    if (old) this.world.player(m.player!)!.color = old.color;
+    m.send({ t: "spawned", you: m.player });
   }
 
   /** Admits a member to the current round, spawning them straight away. */
@@ -138,13 +160,6 @@ export class Room {
     for (const p of this.world.players) if (p.isBot && p.alive) runBot(this.world, p.id);
     this.world.step();
 
-    // Wiped out? Straight back in (§ round decisions: instant respawn).
-    for (const m of this.members) {
-      if (m.player == null) continue;
-      const player = this.world.player(m.player);
-      if (player && !player.alive) spawnInto(this.world, player);
-    }
-
     if (this.world.tick % SIM_HZ === 0) for (const m of this.members) this.sendStats(m);
     if (--this.ticksLeft <= 0) this.endRound();
   }
@@ -181,9 +196,9 @@ export class Room {
     }
   }
 
-  /** Leaderboard rows: everyone still playing, plus anyone who left with a score. */
+  /** Leaderboard rows: everyone in this round, the wiped out and departed marked by `alive`. */
   playerDTOs(): PlayerDTO[] {
-    return this.world.players.filter((p) => p.alive || p.score > 0).map(toPlayerDTO);
+    return this.world.players.map(toPlayerDTO);
   }
 
   /** What one player is allowed to see this tick; null = a spectator, who sees everything. */

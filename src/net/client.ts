@@ -31,6 +31,8 @@ export class NetClient {
   onOffline: (() => void) | null = null;
   /** Called once the server has accepted us, so solo play can stop. */
   onOnline: (() => void) | null = null;
+  /** Called when a respawn request lands us back in the round. */
+  onSpawned: (() => void) | null = null;
 
   private socket: WebSocket | null = null;
   private retry = 0;
@@ -88,6 +90,11 @@ export class NetClient {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
+  /** Wiped out: ask to play again in the running round. */
+  respawn(): void {
+    this.send({ t: "respawn" });
+  }
+
   /** Player input goes to the server; nothing is applied locally. */
   enqueue(cmd: Command): void {
     this.send({ t: "cmd", cmd });
@@ -111,6 +118,7 @@ export class NetClient {
         this.winner = msg.winner;
         this.status = msg.round.intermission ? "intermission" : "playing";
         this.endsIn = msg.round.endsIn;
+        if (msg.you !== undefined) this.you = msg.you;
         if (!msg.round.intermission) {
           this.newRound(msg.round.seed, msg.round.arenaPlayers, msg.round.radius);
           this.onRound?.();
@@ -118,6 +126,11 @@ export class NetClient {
         return;
       case "snap":
         this.applySnapshot(msg);
+        return;
+      case "spawned":
+        this.you = msg.you;
+        this.stats = new Map(); // a new life, a new record
+        this.onSpawned?.();
         return;
       case "stats":
         for (const s of msg.stats) mergeStats(this.stats, s);

@@ -69,6 +69,7 @@ wss.on("connection", (socket: WebSocket) => {
       return;
     }
     if (msg.t === "cmd" && member) room.command(member, msg.cmd);
+    if (msg.t === "respawn" && member) room.respawn(member);
   });
 
   const drop = () => {

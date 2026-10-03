@@ -86,7 +86,10 @@ export interface Snapshot {
 export type ServerMsg =
   /** `you` is 0 for a spectator: no player has that id. */
   | { t: "welcome"; version: number; you: PlayerId; round: RoundInfo; players: PlayerDTO[] }
-  | { t: "round"; round: RoundInfo; players: PlayerDTO[]; winner: PlayerDTO | null }
+  /** `you` is your player id in the new round (0 for a spectator); absent at round end. */
+  | { t: "round"; round: RoundInfo; players: PlayerDTO[]; winner: PlayerDTO | null; you?: PlayerId }
+  /** Back in after a respawn request, as a new player. */
+  | { t: "spawned"; you: PlayerId }
   | Snapshot
   /**
    * Match stats (sim/stats.ts), once a second: a player gets only their own — a
@@ -100,7 +103,9 @@ export type ServerMsg =
 export type ClientMsg =
   /** spectate: watch the whole arena without a colony; commands are ignored. */
   | { t: "hello"; name: string; version: number; spectate?: boolean }
-  | { t: "cmd"; cmd: Command };
+  | { t: "cmd"; cmd: Command }
+  /** Wiped out: play again, in the round that's running. */
+  | { t: "respawn" };
 
 export function encode(msg: ServerMsg | ClientMsg): string {
   return JSON.stringify(msg);

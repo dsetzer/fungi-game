@@ -93,8 +93,9 @@ servers using **wss**, so a remote server joined from Pages must serve wss. Two 
   so hidden state never reaches the browser.
 - **Terrain is never sent.** The client regenerates the identical arena from the round's seed,
   player count and radius.
-- **Rounds run 10 minutes,** with a 12-second intermission. Players join and respawn instantly, so
-  the winner is whoever gathered the most (score = nutrients drawn into your network from falls or
+- **Rounds run 10 minutes,** with a 12-second intermission. Players join at any time; a wiped-out
+  player is out and sees their summary, and **Play again** drops them back into the running round
+  as a fresh player. People come and go throughout, so the winner is whoever gathered the most (score = nutrients drawn into your network from falls or
   rivals). The arena is regenerated each round at a size scaled to the number of players (spectators
   excluded): radius 5400 for four players, growing with the square root of the count, between 2800
   and 12000. The arena is fixed for the length of a round; someone who joins mid-round is dropped

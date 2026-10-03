@@ -102,6 +102,8 @@ export class World {
   fallTarget = 0;
 
   private nextId = 1;
+  /** Player ids are never reused: a respawn is a new player, and a dropped one's id stays dead. */
+  private nextPlayerId = 1;
   private queue: Command[] = [];
   /** Which boosts each player holds; rebuilt lazily after anything changes owner or dies. */
   private held: Map<PlayerId, Set<BoostKind>> | null = null;
@@ -138,7 +140,7 @@ export class World {
   // ---------- setup helpers ----------
 
   addPlayer(name: string, isBot: boolean): Player {
-    const id = this.players.length + 1;
+    const id = this.nextPlayerId++;
     const player: Player = {
       id, name, isBot, alive: true, score: 0, held: 0,
       abilities: { flowUntil: 0, flowReadyAt: 0, severReadyAt: 0 },

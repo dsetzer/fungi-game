@@ -48,6 +48,8 @@ let panelKind: "live" | "summary" | null = null;
 let summaryFor: World | null = null;
 /** Online: the round-end summary is up for this intermission. */
 let roundSummaryShown = false;
+/** Online: the player id whose wipe-out summary has been shown, so it shows once per life. */
+let deathSummaryFor: PlayerId | null = null;
 /** Nobody's id: what a spectator is, for everything that asks "whose is this?". */
 const SPECTATOR: PlayerId = 0;
 
@@ -91,6 +93,7 @@ function leaveToMenu(): void {
   closePanel();
   summaryFor = null;
   roundSummaryShown = false;
+  deathSummaryFor = null;
   banner.hidden = true;
   menu.hidden = false;
   leaveButton.hidden = true;
@@ -205,6 +208,28 @@ function watchOn(): void {
   setSpectating(true);
 }
 
+/**
+ * Online, wiped out: you're out of the round, with your own numbers (the round
+ * goes on, so no one else's). Play again drops you back into it.
+ */
+function showDeathSummary(client: NetClient): void {
+  deathSummaryFor = client.you;
+  const stats = client.stats; // replaced, not cleared, when you respawn
+  const me = client.you;
+  const time = stats.get(me)?.history.time ?? [];
+  const lasted = time.length ? time[time.length - 1] - time[0] : 0;
+  showPanel("summary", {
+    title: "Your network withered",
+    subtitle: `Lasted ${formatTime(lasted)} · the round goes on`,
+    data: () => ({ stats, players: client.players, me, rankBy: "score" }),
+    tabs: ["you", "held", "colonies"],
+    actions: [
+      { label: "Play again", primary: true, run: () => client.respawn() },
+      { label: "Menu", run: leaveToMenu },
+    ],
+  });
+}
+
 /** Online round over: everyone's numbers for the round just played. */
 function showRoundSummary(client: NetClient): void {
   roundSummaryShown = true;
@@ -236,6 +261,11 @@ function connectTo(server: string, name: string): void {
     centredOn = null;
     banner.hidden = true;
     roundSummaryShown = false;
+    deathSummaryFor = null;
+    if (panelKind === "summary") closePanel();
+  };
+  net.onSpawned = () => {
+    centredOn = null; // fly to the new colony
     if (panelKind === "summary") closePanel();
   };
   net.connect();
@@ -446,8 +476,11 @@ function updateHud(): void {
     (spectating ? "" : `<div class="stats">Colonies: <b>${mine.length}</b> · Nutrients: <b>${total}</b></div>`) +
     `<div class="mode">${mode}</div>`;
 
+  const meOnline = net?.world && !spectating ? net.players.find((p) => p.id === net!.you) : undefined;
   if (net?.status === "intermission" && !spectating) {
     if (!roundSummaryShown) showRoundSummary(net);
+  } else if (net && meOnline && !meOnline.alive) {
+    if (deathSummaryFor !== net.you) showDeathSummary(net);
   } else if (net?.status === "intermission") {
     banner.innerHTML = `${net.winner ? `${escape(net.winner.name)} gathered the most` : "Round over"}<small>New substrate in a moment…</small>`;
     banner.hidden = false;

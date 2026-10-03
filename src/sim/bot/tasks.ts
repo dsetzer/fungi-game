@@ -325,15 +325,20 @@ export class BoostHold implements Task {
 // ---------------------------------------------------------------------------
 
 const SIEGE_STALL_SECONDS = 90;
+/** A victim dying slower than this is surrounded further: another colony thrown in to latch on. */
+const SIEGE_KILL_SECONDS = 30;
 
 /**
  * Bring down one rival colony (§6.3). Every hypha runs at the same rate, so a
- * kill takes more lines on the victim than its owner feeds it.
+ * kill takes more lines on the victim than its owner feeds it — and the way to
+ * get them is to surround it: latch on, wall the latch, throw the next one.
  *
- * States: funnel (add drains from every colony of ours in reach until it's
- * clearly shrinking; plan Sever — wall first — on lines feeding it) → finish
- * (fire Flow if that ends it inside Flow's window). Ends when it dies, or when
- * it stops shrinking for too long.
+ * States: funnel (add drains from every colony of ours in reach; while it
+ * isn't dying fast, throw another colony in to latch on, into the widest gap
+ * in the ring round it; wall each latched colony off from the victim's
+ * neighbours, who'd drain it back; plan Sever — wall first — on lines feeding
+ * it) → finish (fire Flow if that ends it inside Flow's window). Ends when it
+ * dies, or when it stops shrinking for too long.
  */
 export class Siege implements Task {
   readonly key: string;
@@ -367,10 +372,18 @@ export class Siege implements Task {
     const shrinking = v.rate < -RATE * 0.5;
     this.state = shrinking ? "finish" : "funnel";
     // More lines on it, from every colony of ours that can reach.
+    const lineValue = board.drainValue(v) * board.profile.drainBias + COLONY * 0.3;
     for (const h of board.reaching(v)) {
-      const cand = board.connect(board.drainValue(v) * board.profile.drainBias + COLONY * 0.3, v, h, "fight", `${this.key} funnel`);
+      const cand = board.connect(lineValue, v, h, "fight", `${this.key} funnel`);
       if (cand) out.push({ ...cand, reactsTo: [`node:${v.id}`] });
     }
+    // Our colonies latched on, and the angles round the victim they hold.
+    const latched = [...board.world.pipes.values()]
+      .filter((p) => p.from === v.id && p.owner === board.me)
+      .map((p) => board.world.nodes.get(p.to))
+      .filter((c): c is GameNode => !!c && c.owner === board.me);
+    const dying = v.rate < 0 && v.nutrients / -v.rate < SIEGE_KILL_SECONDS;
+    if (!dying) out.push(...this.surround(board, v, latched, lineValue));
     // Its reinforcements: sever them, wall first.
     if (board.holds("sever")) {
       for (const p of board.feedsInto.get(v.id) ?? []) {
@@ -395,5 +408,36 @@ export class Siege implements Task {
     }
     return out;
   }
+
+  /**
+   * Throw the next colony in: to a spot that can latch onto the victim, in the
+   * widest gap left in the ring of colonies already on it — so the ring closes
+   * round it rather than piling up on one side. Spots a rival other than the
+   * victim could drain are worth less.
+   */
+  private surround(board: Board, v: GameNode, latched: GameNode[], lineValue: number): Candidate[] {
+    const angles = latched.map((c) => Math.atan2(c.y - v.y, c.x - v.x));
+    const gap = (a: number) => {
+      let best = Math.PI;
+      for (const b of angles) best = Math.min(best, Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))));
+      return best; // 0 (on top of one) … π (opposite all of them)
+    };
+    const others = board.rivals.filter((r) => r.kind === "colony" && r.id !== v.id);
+    const out: Candidate[] = [];
+    for (const parent of board.mine) {
+      if (dist(parent.x, parent.y, v.x, v.y) > board.world.reachOf(parent) * 2) continue;
+      const cost = board.throwCost(parent);
+      for (const { spot, childReach } of board.throwSpots(parent)) {
+        if (dist(spot.x, spot.y, v.x, v.y) > childReach * 0.9) continue;
+        if (!board.world.hasLineOfSight(spot, v)) continue;
+        const exposed = others.some((r) => dist(r.x, r.y, spot.x, spot.y) <= board.world.reachOf(r));
+        const spread = latched.length === 0 ? 1 : gap(Math.atan2(spot.y - v.y, spot.x - v.x)) / Math.PI;
+        const value = lineValue * (0.5 + 0.5 * spread) * (exposed ? 0.6 : 1) * THROW_DELAY - cost;
+        out.push({ ...board.eject(value, parent, spot, "fight", `${this.key} surround`), reactsTo: [`node:${v.id}`] });
+      }
+    }
+    return out;
+  }
 }
+
 

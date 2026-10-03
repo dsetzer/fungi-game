@@ -61,6 +61,10 @@ Three layers, re-run every time a bot looks (`src/sim/bot/`):
    - *Harvest loop*: link → close → hold; rebuilds if a line goes.
    - *Boost hold*: capture → hold (feed, recycle).
    - *Siege*: funnel → finish (Flow; Sever on its reinforcements, wall first).
+     While the victim isn't dying fast, another colony is thrown in to latch on,
+     into the widest gap round it. Two sieges at once in war, one otherwise
+     (attackers first, then the weakest), so a bot busy defending still finishes
+     what it can; easy never sieges.
 3. **Reflexes** (`reflexes.ts`) — what a healthy network needs on every look.
 
 `board.ts` is the perception layer and shared pricing; `nav.ts` the walking map;

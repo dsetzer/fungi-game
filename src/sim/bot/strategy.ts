@@ -86,11 +86,16 @@ export function planTasks(board: Board, memory: Memory): void {
     .slice(0, 2);
   for (const { b } of neutral) if (!has(`boost:${b.id}`)) memory.tasks.push(new BoostHold(b.id, board.tick));
 
-  // Siege: in war, bring down the rival colony we can kill soonest.
-  if (memory.posture === "war" && count("siege:") < 1) {
+  // Siege: bring rival colonies down. In war, two at once; otherwise one, so a
+  // network that's busy defending still finishes what it can (endless matches
+  // came from bots that only ever traded drains). Whoever is draining us first,
+  // then the one that dies soonest. Easy never goes to war, and never sieges.
+  const sieges = memory.posture === "war" ? 2 : Number.isFinite(board.profile.warEdge) ? 1 : 0;
+  if (count("siege:") < sieges) {
+    const attackers = new Set(board.attacks.map((a) => a.attacker.id));
     const prey = board.rivals
       .filter((v) => v.kind === "colony" && board.reaching(v).length > 0 && !has(`siege:${v.id}`))
-      .sort((a, b) => board.drainValue(b) - board.drainValue(a))[0];
+      .sort((a, b) => Number(attackers.has(b.id)) - Number(attackers.has(a.id)) || a.nutrients - b.nutrients)[0];
     if (prey) memory.tasks.push(new Siege(prey.id, board.tick));
   }
 

@@ -188,7 +188,11 @@ export class Board {
 
   // ---------- the network ----------
 
-  /** Pieces: our colonies joined by our own hyphae (through our boosts too). */
+  /**
+   * Pieces: our colonies joined by our own hyphae (through our boosts too). A
+   * piece is named by its oldest node, so the name survives the piece throwing
+   * (a regroup expedition follows its piece by name).
+   */
   private findPieces(): void {
     const root = new Map<EntityId, EntityId>();
     for (const n of [...this.mine, ...this.myBoosts]) root.set(n.id, n.id);
@@ -200,7 +204,9 @@ export class Board {
       return x;
     };
     for (const p of this.world.pipes.values()) {
-      if (root.has(p.from) && root.has(p.to)) root.set(find(p.from), find(p.to));
+      if (!root.has(p.from) || !root.has(p.to)) continue;
+      const [a, b] = [find(p.from), find(p.to)];
+      if (a !== b) root.set(Math.max(a, b), Math.min(a, b));
     }
     for (const c of this.mine) {
       const r = find(c.id);
@@ -374,14 +380,24 @@ export class Board {
    * The cost of throwing from `parent` (bot-design.md, Expansion): the throw's
    * cord drains it at the line rate. A gathering hub that can't afford that is
    * saved by a follow-up cut (an action); a relay that feeds others abandons that
-   * supply; a tip or island just moves forward into its child.
+   * supply; a tip or island just moves forward into its child. A relay in a piece
+   * with nothing coming in — an idle ring — supplies nothing: it only circulates
+   * its own store, and throwing from it costs no more than from a tip. (Pricing
+   * it as a supply line is what left rings idling forever, far from any food.)
    */
   throwCost(parent: GameNode): number {
     const i = this.info.get(parent.id)!;
     const after = i.rate - RATE;
     if (i.income > 0) return after >= 0 ? UPKEEP_PER_SEC * HORIZON * 0.5 : RATE * 6;
-    if (i.feedsColonies.length > 0) return COLONY * 0.5;
+    if (i.feedsColonies.length > 0 && this.pieceIncome(i.piece) > 0) return COLONY * 0.5;
     return 0;
+  }
+
+  /** What a piece of our network brings in from outside it, per second. */
+  pieceIncome(piece: number): number {
+    let income = 0;
+    for (const c of this.pieces.get(piece) ?? []) income += this.info.get(c.id)?.income ?? 0;
+    return income;
   }
 
   /**

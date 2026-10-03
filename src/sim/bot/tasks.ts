@@ -56,7 +56,8 @@ export class Expedition implements Task {
   private bestAt: number;
 
   constructor(readonly to: Destination, tick: number) {
-    this.key = `expedition:${to.kind}:${to.node.id}`;
+    // Per piece for a regroup: several stranded pieces may head for the same place.
+    this.key = to.kind === "regroup" ? `expedition:regroup:${to.piece}:${to.node.id}` : `expedition:${to.kind}:${to.node.id}`;
     this.started = tick;
     this.bestAt = tick;
   }

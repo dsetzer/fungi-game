@@ -86,6 +86,25 @@ function recorder(world: World) {
 }
 
 describe("bot behaviour (bot-design.md)", () => {
+  it("leaves an idle ring to go after food, instead of circulating it forever", () => {
+    // A closed ring with nothing coming in pays no upkeep, so it would idle for
+    // ever; every colony in it is a relay, which once made every throw too dear.
+    const { world, bot } = duel();
+    const ring = [0, 1, 2].map((k) => world.addColony(bot.id, -1500 + Math.cos(k * 2.1) * 120, Math.sin(k * 2.1) * 120, 300));
+    for (let k = 0; k < 3; k++) world.enqueue({ type: "connect", player: bot.id, from: ring[k].id, to: ring[(k + 1) % 3].id });
+    world.step();
+    expect(world.pipes.size).toBe(3);
+    // Food well beyond a single throw: only an expedition gets there.
+    world.addFall(1500, 0, 2000);
+    const log = recorder(world);
+    for (let i = 0; i < 60 * SIM_HZ; i++) {
+      runBot(world, bot.id, "normal");
+      world.step();
+      if (log.some((l) => l.cmd.type === "eject")) break;
+    }
+    expect(log.some((l) => l.cmd.type === "eject")).toBe(true);
+  });
+
   it("goes round a terrain wall to reach a boost, instead of throwing at the wall", () => {
     // A wall of rock straight between the colony and the boost, open only at the top.
     const walls = [];

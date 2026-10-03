@@ -29,6 +29,8 @@ export const WEIGHTS: Record<Posture, Record<Category, number>> = {
 };
 
 const HOLD_SECONDS = 8;
+/** Stranded pieces travelling at once. Each idle one left out just sits there. */
+const MAX_REGROUPS = 8;
 
 export function choosePosture(board: Board, memory: Memory): Posture {
   const s = board.stats;
@@ -113,7 +115,7 @@ export function planTasks(board: Board, memory: Memory): void {
       worth: (food ? Math.min(board.tapValue(food), LINE) : 0) + store * 0.3 + COLONY * 0.3 * piece.length,
     };
     const e = new Expedition(to, board.tick);
-    if (!has(e.key) && count("expedition:regroup") < 3) memory.tasks.push(e);
+    if (!has(e.key) && count("expedition:regroup") < MAX_REGROUPS) memory.tasks.push(e);
   }
 
   // Expeditions: travel to the best destinations out of reach.

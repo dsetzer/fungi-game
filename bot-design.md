@@ -126,7 +126,9 @@ colonies, and — for a stranded piece — the main network. Up to six are chose
 value over walking distance; the one being travelled to gets a bonus so bots
 don't dither. A throw is worth the share of the walk it covers times what's at the
 end, or — when it lands in reach — what it brings in, shared over the actions it
-takes to collect. Throwing from a gathering hub costs the follow-up cut; from a
+takes to collect. A line feeding a fall is cut as soon as Harvest is gone:
+without it the loop nets nothing and the colonies round it would idle for ever.
+Throwing from a gathering hub costs the follow-up cut; from a
 relay that feeds others, the supply it abandons — but only if its piece has food
 coming in. A relay in an idle ring supplies nothing, so it throws as freely as a
 tip; priced as a supply line, rings sat idle for ever. Every stranded piece with

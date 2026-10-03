@@ -86,6 +86,30 @@ function recorder(world: World) {
 }
 
 describe("bot behaviour (bot-design.md)", () => {
+  it("cuts its Harvest loop once Harvest is lost, so the fall gets eaten", () => {
+    const { world, bot } = duel();
+    world.addColony(bot.id, 0, 0, 800);
+    world.addColony(bot.id, 120, 80, 800);
+    const fall = world.addFall(150, -60, 5000);
+    const harvest = give(world, bot.id, "harvest");
+    const feeding = () => [...world.pipes.values()].some((p) => p.to === fall.id);
+    for (let i = 0; i < 30 * SIM_HZ && !feeding(); i++) {
+      runBot(world, bot.id, "hard");
+      world.step();
+    }
+    expect(feeding()).toBe(true); // the loop, while it pays
+    harvest.owner = null;
+    world.boostsChanged();
+    for (let i = 0; i < 20 * SIM_HZ && feeding(); i++) {
+      runBot(world, bot.id, "hard");
+      world.step();
+    }
+    expect(feeding()).toBe(false);
+    const left = fall.nutrients;
+    for (let i = 0; i < 5 * SIM_HZ; i++) world.step();
+    expect(fall.nutrients).toBeLessThan(left); // being eaten, not held flat
+  });
+
   it("leaves an idle ring to go after food, instead of circulating it forever", () => {
     // A closed ring with nothing coming in pays no upkeep, so it would idle for
     // ever; every colony in it is a relay, which once made every throw too dear.

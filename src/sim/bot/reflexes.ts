@@ -18,6 +18,7 @@ export function reflexes(board: Board): Candidate[] {
     if (c) out.push(c);
   };
   tap(board, push);
+  unloop(board, push);
   drainRivals(board, push);
   stripBoosts(board, push);
   supply(board, push);
@@ -50,6 +51,26 @@ function tap(board: Board, push: Push): void {
       .slice(0, 3);
     const value = board.tapValue(f);
     for (const c of takers) push(board.connect(value + board.rescueBonus(c), f, c, "economy", `tap ${f.id}`));
+  }
+}
+
+/**
+ * A line of ours feeding a fall only pays while we hold Harvest (the sustain
+ * loop, tasks.ts). Without it the loop nets nothing: the fall's pool sits flat
+ * and the colonies round it idle for ever, sustained but going nowhere. Cut it,
+ * so the fall is eaten and the piece moves on when it's gone.
+ */
+function unloop(board: Board, push: Push): void {
+  if (board.holds("harvest")) return;
+  for (const p of board.world.pipes.values()) {
+    if (p.owner !== board.me) continue;
+    const fall = board.world.nodes.get(p.to);
+    if (fall?.kind !== "fall" || board.world.nodes.get(p.from)?.owner !== board.me) continue;
+    push({
+      value: Math.min(fall.nutrients, LINE) * 0.5, category: "economy", why: `unloop ${fall.id}`,
+      cmd: { type: "cut", player: board.me, pipe: p.id },
+      valid: () => board.world.pipes.has(p.id),
+    });
   }
 }
 

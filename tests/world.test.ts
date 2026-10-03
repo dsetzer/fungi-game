@@ -477,15 +477,17 @@ describe("walls", () => {
     });
   });
 
-  it("only the crossbar blocks — lines that cross just the stem are fine", () => {
+  it("the stem blocks too — both lines of the ⊢ are wall", () => {
     const { world, me, mine } = standoff();
     world.enqueue({ type: "wall", player: me.id, from: mine.id, x: 100, y: 0 });
     world.step();
     // Both lines run along x=150, crossing the stem (y=0) but not the crossbar (x=100).
     const a = world.addFall(150, -80, 100);
     const c = world.addColony(me.id, 150, 70, 100);
-    expect(world.hasLineOfSight(a, { x: 150, y: 80 })).toBe(true);
-    expect(world.canConnect(me.id, a.id, c.id).ok).toBe(true);
+    expect(world.hasLineOfSight(a, { x: 150, y: 80 })).toBe(false);
+    expect(world.canConnect(me.id, a.id, c.id)).toEqual({ ok: false, reason: "no line of sight" });
+    // Lines out of the anchor colony itself share the stem's end and aren't blocked.
+    expect(world.hasLineOfSight(mine, { x: 300, y: 100 })).toBe(true);
   });
 
   it("does not sever a drain already crossing the new crossbar", () => {

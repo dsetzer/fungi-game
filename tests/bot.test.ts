@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SIM_HZ } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
 import { BOT_LEVELS, runBot } from "../src/sim/bot";
+import { ACTION_JITTER } from "../src/sim/bot/profile";
 import { stepMatch } from "../src/sim/match";
 import type { BoostKind, Command } from "../src/sim/types";
 import { World } from "../src/sim/world";
@@ -45,9 +46,12 @@ describe("bots", () => {
         runBot(world, bot.id, level);
         world.step();
       }
-      const gap = SIM_HZ / BOT_LEVELS[level].actionsPerSecond;
-      expect(ticks.length, level).toBeLessThanOrEqual(BOT_LEVELS[level].actionsPerSecond * seconds + 1);
-      for (let i = 1; i < ticks.length; i++) expect(ticks[i] - ticks[i - 1], level).toBeGreaterThanOrEqual(gap);
+      const minGap = (SIM_HZ / BOT_LEVELS[level].actionsPerSecond) * (1 - ACTION_JITTER);
+      expect(ticks.length, level).toBeLessThanOrEqual((seconds * SIM_HZ) / minGap + 1);
+      const gaps = ticks.slice(1).map((t, i) => t - ticks[i]);
+      for (const g of gaps) expect(g, level).toBeGreaterThanOrEqual(minGap);
+      // Jittered: not every gap the same.
+      if (gaps.length > 2) expect(new Set(gaps).size, level).toBeGreaterThan(1);
     }
   });
 });

@@ -115,9 +115,9 @@ Nutrient falls are resource patches scattered across the arena at the start of e
 
 *Revised from screenshots of the original (`reference/original-1.webp`, `original-2.webp`).*
 
-A wall is a **⊢ shape**: a thin stem drawn from one of your colonies out to a point, ending in a short **crossbar** perpendicular to the stem. Only the crossbar is a barrier — the stem is just the tether back to the colony that placed it.
+A wall is a **⊢ shape**: a thin stem drawn from one of your colonies out to a point, ending in a short **crossbar** perpendicular to the stem. Both lines are barrier: the crossbar and the stem back to the colony that placed it.
 
-- The crossbar blocks line of sight (Section 6.2), so it's placed *across* the line an opponent would use: typically right in front of an enemy colony that's reaching toward yours, or fanned out on the exposed side of a colony (the screenshots show a colony with three walls covering one flank).
+- The wall blocks line of sight (Section 6.2), so the crossbar is placed *across* the line an opponent would use: typically right in front of an enemy colony that's reaching toward yours, or fanned out on the exposed side of a colony (the screenshots show a colony with three walls covering one flank).
 - A colony can hold several walls; covering every angle takes several, which is the committal "full enclosure" option.
 - Walls belong to their anchor colony and disappear if it dies.
 

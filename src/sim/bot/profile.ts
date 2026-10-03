@@ -2,7 +2,8 @@
  * Difficulty (bot-design.md, Difficulty). Three things separate the levels, and
  * none of them is how well a bot *thinks* — every level plays the same brain:
  *
- * - **Hands** — actions per second, one at a time with a gap after each.
+ * - **Hands** — actions per second, one at a time with a gap after each. The gap
+ *   varies by up to ACTION_JITTER either way, so the rhythm isn't machine-regular.
  * - **Reaction** — how long after something new appears in contact before the
  *   bot may respond to it at all: a rival colony landing within reach of one of
  *   ours (or ours within reach of it), a rival line starting to drain us. A person
@@ -13,6 +14,9 @@
  *   Hard is offensive: it latches on and drains on sight, and goes to war on a
  *   smaller edge. Normal sits between.
  */
+/** Each action gap is the level's average gap times 1 ± up to this. */
+export const ACTION_JITTER = 0.4;
+
 export type BotLevel = "easy" | "normal" | "hard";
 
 export interface BotProfile {

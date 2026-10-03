@@ -363,13 +363,23 @@ export class World {
     return undefined;
   }
 
-  /** Blocked by terrain and by any player-built crossbar. */
+  /** Blocked by terrain and by any player-built wall. */
   hasLineOfSight(a: Vec, b: Vec): boolean {
     if (this.arena.index.segmentBlocks(a, b)) return false;
     for (const bar of this.barriers.values()) {
-      if (segmentsIntersect(a, b, bar.a, bar.b)) return false;
+      if (this.wallCrosses(bar, a, b)) return false;
     }
     return true;
+  }
+
+  /**
+   * Both lines of the ⊢ are wall: the crossbar and the stem back to its colony.
+   * A line from the anchor colony itself shares the stem's end, so it isn't crossing.
+   */
+  wallCrosses(bar: Barrier, a: Vec, b: Vec): boolean {
+    if (segmentsIntersect(a, b, bar.a, bar.b)) return true;
+    const anchor = this.nodes.get(bar.anchor);
+    return !!anchor && segmentsIntersect(a, b, anchor, bar);
   }
 
   /**
@@ -603,7 +613,7 @@ export class World {
     for (const p of this.pipes.values()) {
       const s = this.nodes.get(p.from)!;
       const e = this.nodes.get(p.to)!;
-      if (segmentsIntersect(s, e, bar.a, bar.b)) this.pipes.delete(p.id);
+      if (this.wallCrosses(bar, s, e)) this.pipes.delete(p.id);
     }
   }
 

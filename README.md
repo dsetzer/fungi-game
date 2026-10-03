@@ -68,7 +68,7 @@ servers using **wss**, so a remote server joined from Pages must serve wss. Two 
 | Wheel **while dragging** | Share of the parent the new colony carries (15–90%, default 65%, 5% per notch) |
 | Left-drag from a node → another node | Grow a hypha; nutrients flow from drag start → drag end (drag *from* a rival to drain them) |
 | Left-click a hypha | Reverse which way it flows (only hyphae you grew) |
-| Right-drag from your colony | Build a wall (⊢): the crossbar blocks line of sight |
+| Right-drag from your colony | Build a wall (⊢): both the stem and the crossbar block line of sight |
 | Right-click your wall / your hypha | Demolish it / cut it (only hyphae you grew) |
 | Right-drag from anywhere else, or WASD | Pan |
 | Mouse wheel | Zoom |
@@ -143,7 +143,7 @@ Harvest loops, boost holds, sieges; **reflexes** keep the network healthy — ta
 reversals, rings, relinking pieces, walls, drains, Flow. Every candidate is priced on one scale,
 weighted by the posture, checked against the rules best-first, and the best legal one is taken.
 Difficulty is hands, reaction and temperament: one action at a time with a gap after each
-(Easy 5 s, Normal 2 s, Hard 1.4 s); a reaction delay before answering anything new that comes
+(Easy 5 s, Normal 2 s, Hard 1.4 s on average, each varied ±40%); a reaction delay before answering anything new that comes
 into contact (5 s, 3 s, 1.5 s); and what it reaches for — easy walls rivals off on sight, hard
 latches on and drains them. A bot stops throwing at 40 colonies.
 
@@ -182,11 +182,11 @@ noted.
 - **Territory:** a colony's blob is that player's ground. Rivals can't plant inside it, only around
   its edge, so reaching a node buried in a big network takes enough reach to span the blob. Neutral
   falls hold no territory.
-- **Walls:** 15 nutrients, max 3 per colony, fixed 170-unit crossbar. A new crossbar does *not*
+- **Walls:** 15 nutrients, max 3 per colony, fixed 120-unit crossbar. A new wall does *not*
   sever hyphae already crossing it — walling over your own established lines while denying the
   ground to everyone else is the point of placing one well. It blocks line of sight, so it stops
   new connections and ejections across it, and that is all it does.
-- **Line of sight:** checked when a hypha is grown, and blocked by terrain and crossbars alike.
+- **Line of sight:** checked when a hypha is grown, and blocked by terrain and walls (stem and crossbar) alike.
 - **Fog of war:** colonies see 1.15× their reach (minimum 520). Explored ground stays remembered:
   terrain and falls persist, rivals only show while in sight.
 - **Map:** seeded cave terrain, regenerated each round: a grid of about nine thousand small wall

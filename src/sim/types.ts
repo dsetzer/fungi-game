@@ -60,7 +60,7 @@ export interface Pipe {
 
 /**
  * A player-built wall (§6.5): a stem from the anchor colony out to a crossbar.
- * Only the crossbar (a → b) blocks line of sight; the stem is just a tether.
+ * Both the crossbar (a → b) and the stem block line of sight.
  */
 export interface Barrier {
   id: EntityId;

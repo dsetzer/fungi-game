@@ -9,7 +9,7 @@ sight. This is the spec the code in `src/sim/bot/` implements.
 - **Hands are slow, eyes are instant.** A bot sees its whole network in real time —
   every store, every rate, every line — and re-reads it every quarter second. Only
   its *actions* are limited: one at a time, a gap after each (easy 5 s, normal 2 s,
-  hard 1.4 s), nothing saved up.
+  hard 1.4 s on average, each varied by up to ±40%), nothing saved up.
 - **Every action is priced on one scale:** nutrients gained, saved or taken over the
   next minute. One line running for that minute (`LINE`, 600) and one colony's
   worth just existing (`COLONY`, 300) anchor the scale. Keeping the network alive

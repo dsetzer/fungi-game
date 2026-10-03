@@ -1,5 +1,5 @@
 import { PIPE_RATE_PER_SEC, SIM_HZ } from "../../config";
-import { dist } from "../geometry";
+import { dist, makeRng } from "../geometry";
 import type { BoostKind, Command, EntityId, PlayerId } from "../types";
 import type { World } from "../world";
 
@@ -85,6 +85,10 @@ export interface Task {
 export interface Memory {
   /** Tick of the last action taken. */
   lastAction: number;
+  /** Ticks after `lastAction` before the next one — re-rolled after every action. */
+  gap: number;
+  /** The bot's own dice, so its timing never disturbs the world's random stream. */
+  rng: () => number;
   posture: Posture;
   postureSince: number;
   tasks: Task[];
@@ -116,6 +120,8 @@ export function memoryOf(world: World, player: PlayerId): Memory {
   if (!m) {
     m = {
       lastAction: -Infinity,
+      gap: 0,
+      rng: makeRng(Math.imul(player + 1, 0x9e3779b1) ^ world.tick),
       posture: "opening",
       postureSince: world.tick,
       tasks: [],

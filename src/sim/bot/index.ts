@@ -4,7 +4,7 @@ import type { World } from "../world";
 import { Board } from "./board";
 import { MIN_VALUE, memoryOf, observe, type Candidate } from "./core";
 import { reflexes } from "./reflexes";
-import { BOT_LEVELS, type BotLevel } from "./profile";
+import { ACTION_JITTER, BOT_LEVELS, type BotLevel } from "./profile";
 import { WEIGHTS, choosePosture, planTasks } from "./strategy";
 
 export { BOT_LEVELS, type BotLevel, type BotProfile } from "./profile";
@@ -24,7 +24,8 @@ export { BOT_LEVELS, type BotLevel, type BotProfile } from "./profile";
  * is the action taken.
  *
  * Eyes are instant, hands are slow: the bot re-reads its network every look,
- * but acts one thing at a time with a gap after each, set by its level.
+ * but acts one thing at a time with a gap after each, set by its level and
+ * jittered so it doesn't tick like a metronome.
  * Bots issue ordinary Commands — no special access to the sim — so they double
  * as example scripts for a future coding API.
  */
@@ -35,8 +36,7 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
   const memory = memoryOf(world, player);
   observe(world, player, memory);
   const profile = BOT_LEVELS[level];
-  const gap = SIM_HZ / profile.actionsPerSecond;
-  if (world.tick - memory.lastAction < gap) return; // hands still busy
+  if (world.tick - memory.lastAction < memory.gap) return; // hands still busy
 
   const board = new Board(world, player, memory, profile);
   if (board.mine.length === 0) return;
@@ -45,6 +45,8 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
   world.enqueue(choice.cmd);
   choice.onChosen?.();
   memory.lastAction = world.tick;
+  const jitter = 1 + (memory.rng() * 2 - 1) * ACTION_JITTER;
+  memory.gap = (SIM_HZ / profile.actionsPerSecond) * jitter;
 }
 
 /** Every move the bot could make right now, weighted and ranked; the best legal one. */

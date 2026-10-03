@@ -7,8 +7,10 @@ export interface Player {
   color: string;
   isBot: boolean;
   alive: boolean;
-  /** Nutrients drawn into this player's network from outside it — leaderboard rank. */
+  /** Nutrients drawn into this player's network from outside it — decides online rounds. */
   score: number;
+  /** Nutrients in this player's colonies right now — what the leaderboard ranks by. */
+  held: number;
   /** Activated boosts' timers (§6.7), as sim ticks. */
   abilities: Abilities;
 }

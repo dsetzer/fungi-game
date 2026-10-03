@@ -1,3 +1,4 @@
+import type { StatsDTO } from "../sim/stats";
 import type { BoostKind, Command, EntityId, PlayerId } from "../sim/types";
 
 /**
@@ -24,6 +25,8 @@ export interface PlayerDTO {
   name: string;
   color: string;
   score: number;
+  /** Nutrients held right now (the leaderboard). */
+  h: number;
   alive: boolean;
   /** Activated boosts' timers, as sim ticks (compare with the snapshot's tick). */
   fu: number;
@@ -85,6 +88,13 @@ export type ServerMsg =
   | { t: "welcome"; version: number; you: PlayerId; round: RoundInfo; players: PlayerDTO[] }
   | { t: "round"; round: RoundInfo; players: PlayerDTO[]; winner: PlayerDTO | null }
   | Snapshot
+  /**
+   * Match stats (sim/stats.ts), once a second: a player gets only their own — a
+   * rival's live numbers would see through the fog — a spectator gets everyone's,
+   * and at round end everyone gets everyone's. Each carries just the history the
+   * member hasn't had yet.
+   */
+  | { t: "stats"; stats: StatsDTO[] }
   | { t: "error"; message: string };
 
 export type ClientMsg =

@@ -8,6 +8,7 @@ import { stepMatch } from "./sim/match";
 import type { BotLevel } from "./sim/bot";
 import { BOOST_KINDS, type BoostKind, type Command, type PlayerId } from "./sim/types";
 import { World } from "./sim/world";
+import { StatsPanel, type StatsData, type StatsTab } from "./ui/statsPanel";
 
 const SOLO_PLAYER: PlayerId = 1;
 const GENERA = [
@@ -24,6 +25,8 @@ const menuServer = document.getElementById("menu-server") as HTMLInputElement;
 const menuLevel = document.getElementById("menu-level") as HTMLSelectElement;
 const leaveButton = document.getElementById("leave") as HTMLButtonElement;
 const abilityBar = document.getElementById("abilities")!;
+const statsToggle = document.getElementById("stats-toggle") as HTMLButtonElement;
+const statsPanel = new StatsPanel(document.getElementById("stats")!);
 
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
@@ -37,6 +40,14 @@ let centredOn: unknown = null;
 let net: NetClient | null = null;
 /** Watching the whole arena rather than playing: no fog, no commands. */
 let spectating = false;
+/** The menu's choice. `spectating` is also set when you watch on after being wiped out. */
+let watchOnly = false;
+/** What the stats panel is showing: a spectator's live view, or an end-of-game summary. */
+let panelKind: "live" | "summary" | null = null;
+/** The solo match whose summary has been shown, so it shows once. */
+let summaryFor: World | null = null;
+/** Online: the round-end summary is up for this intermission. */
+let roundSummaryShown = false;
 /** Nobody's id: what a spectator is, for everything that asks "whose is this?". */
 const SPECTATOR: PlayerId = 0;
 
@@ -59,9 +70,8 @@ menu.addEventListener("submit", (e) => {
   menu.hidden = true;
   leaveButton.hidden = false;
   // Spectate: with no server, watch a local all-bot match; with one, watch it live.
-  spectating = (e as SubmitEvent).submitter?.id === "menu-spectate";
-  renderer.spectate = spectating;
-  input.readOnly = spectating;
+  watchOnly = (e as SubmitEvent).submitter?.id === "menu-spectate";
+  setSpectating(watchOnly);
   if (server) connectTo(server, name);
   else startSolo();
 });
@@ -76,16 +86,141 @@ function leaveToMenu(): void {
   solo = null;
   clearTimeout(soloRestart);
   soloRestart = undefined;
-  spectating = false;
-  renderer.spectate = false;
-  input.readOnly = false;
-  input.cancelGestures();
-  centredOn = null;
+  watchOnly = false;
+  setSpectating(false);
+  closePanel();
+  summaryFor = null;
+  roundSummaryShown = false;
   banner.hidden = true;
   menu.hidden = false;
   leaveButton.hidden = true;
 }
-leaveButton.addEventListener("click", leaveToMenu);
+
+/** Watching (no fog, no commands) or playing. */
+function setSpectating(on: boolean): void {
+  if (spectating !== on) centredOn = null; // a spectator sees the whole arena
+  spectating = on;
+  renderer.spectate = on;
+  input.readOnly = on;
+  input.cancelGestures();
+}
+
+/**
+ * Leave: a player gets a summary of the game they're leaving first (their own
+ * stats; a solo match's everyone's), then the menu. A spectator just leaves.
+ */
+leaveButton.addEventListener("click", () => {
+  if (spectating || panelKind === "summary") {
+    leaveToMenu();
+    return;
+  }
+  let data: StatsData | null = null;
+  let tabs: StatsTab[] = ALL_TABS;
+  if (net?.world) {
+    data = netData(net, net.you);
+    tabs = ["you", "held", "colonies"]; // only your own: the round is still on
+  } else if (solo) {
+    data = soloData(solo, SOLO_PLAYER);
+  }
+  leaveToMenu();
+  const mine = data?.me == null ? undefined : data.stats.get(data.me);
+  if (!data || !mine?.history.time.length) return;
+  const played = mine.history.time[mine.history.time.length - 1] - mine.history.time[0];
+  const frozen = data;
+  menu.hidden = true;
+  showPanel("summary", {
+    title: "You left the match",
+    subtitle: `Played ${formatTime(played)}`,
+    data: () => frozen,
+    tabs,
+    actions: [{ label: "Back to menu", primary: true, run: () => { closePanel(); menu.hidden = false; } }],
+  });
+});
+
+const ALL_TABS: StatsTab[] = ["you", "held", "colonies", "income", "lost", "spent"];
+
+function showPanel(kind: "live" | "summary", opts: Parameters<StatsPanel["show"]>[0]): void {
+  panelKind = kind;
+  statsPanel.show(opts);
+}
+
+function closePanel(): void {
+  panelKind = null;
+  statsPanel.hide();
+}
+
+function soloData(world: World, me: PlayerId | null): StatsData {
+  return { stats: world.stats, players: world.players, me, rankBy: "survival" };
+}
+
+function netData(client: NetClient, me: PlayerId | null): StatsData {
+  return { stats: client.stats, players: client.players, me, rankBy: "score" };
+}
+
+/** A spectator's live view of everyone, docked to the side (Stats button or Tab). */
+function toggleLiveStats(): void {
+  if (panelKind === "live") {
+    closePanel();
+    return;
+  }
+  if (panelKind === "summary") return;
+  showPanel("live", {
+    title: "Match stats",
+    data: () => (net?.world ? netData(net, null) : soloData(currentWorld(), null)),
+    tabs: ["held", "colonies", "income", "lost", "spent"],
+    actions: [{ label: "Close", run: closePanel }],
+    docked: true,
+  });
+}
+statsToggle.addEventListener("click", toggleLiveStats);
+
+/** Wiped out, or the last one standing: how the match went, with everyone's numbers. */
+function showSoloSummary(world: World): void {
+  summaryFor = world;
+  const stats = world.stats.get(SOLO_PLAYER)!;
+  const won = world.winner === SOLO_PLAYER;
+  const myEnd = stats.diedAt ?? world.tick;
+  // Your place: one behind everyone who outlasted you.
+  const outlastedBy = world.players.filter(
+    (p) => p.id !== SOLO_PLAYER && (p.alive || (world.stats.get(p.id)?.diedAt ?? Infinity) > myEnd),
+  ).length;
+  const place = won ? 1 : outlastedBy + 1;
+  const actions = [
+    { label: "Play again", primary: true, run: restartSolo },
+    ...(world.ended ? [] : [{ label: "Watch the rest", run: watchOn }]),
+    { label: "Menu", run: leaveToMenu },
+  ];
+  showPanel("summary", {
+    title: won ? "Your network prevails" : "Your network withered",
+    subtitle: `${ordinal(place)} of ${world.players.length} · lasted ${formatTime(myEnd / SIM_HZ)}`,
+    data: () => soloData(world, SOLO_PLAYER),
+    tabs: ALL_TABS,
+    actions,
+  });
+}
+
+/** After being wiped out in solo: watch the bots finish it, as a spectator. */
+function watchOn(): void {
+  closePanel();
+  setSpectating(true);
+}
+
+/** Online round over: everyone's numbers for the round just played. */
+function showRoundSummary(client: NetClient): void {
+  roundSummaryShown = true;
+  showPanel("summary", {
+    title: client.winner ? `${client.winner.name} gathered the most` : "Round over",
+    subtitle: "New substrate in a moment…",
+    data: () => netData(client, client.you),
+    tabs: ALL_TABS,
+    actions: [{ label: "Close", run: closePanel }],
+  });
+}
+
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return `${n}${teen ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
 
 function connectTo(server: string, name: string): void {
   net = new NetClient(serverUrl(server), name, spectating);
@@ -100,6 +235,8 @@ function connectTo(server: string, name: string): void {
   net.onRound = () => {
     centredOn = null;
     banner.hidden = true;
+    roundSummaryShown = false;
+    if (panelKind === "summary") closePanel();
   };
   net.connect();
 }
@@ -225,6 +362,8 @@ function startSolo(): void {
 function restartSolo(): void {
   clearTimeout(soloRestart);
   soloRestart = undefined;
+  setSpectating(watchOnly); // back to playing after watching the rest of a match
+  if (panelKind === "summary") closePanel();
   solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
   solo.botLevel = botLevel;
   centredOn = null;
@@ -235,6 +374,10 @@ window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing on the menu
   if (e.key.toLowerCase() === "r" && solo) restartSolo();
   if (e.key.toLowerCase() === "f") renderer.showPerf = !renderer.showPerf;
+  if (e.key === "Tab" && spectating && menu.hidden) {
+    e.preventDefault();
+    toggleLiveStats();
+  }
 });
 window.addEventListener("resize", () => renderer.resize());
 renderer.resize();
@@ -262,22 +405,28 @@ function centreOnHome(): void {
 }
 
 function updateHud(): void {
-  hud.hidden = !menu.hidden; // nothing to report until a game has started
+  // Nothing to report until a game has started (or after leaving one).
+  hud.hidden = !menu.hidden || (!solo && !net);
+  statsToggle.hidden = hud.hidden || !spectating;
   updateAbilities();
   const world = currentWorld();
   const me = currentPlayer();
   const mine = [...world.nodes.values()].filter((n) => n.owner === me && n.kind === "colony");
   const total = Math.floor(mine.reduce((s, n) => s + n.nutrients, 0));
 
-  const ranked = [...world.players].filter(Boolean).sort((a, b) => b.score - a.score);
-  const rows = ranked.slice(0, 5).map((p, i) => {
-    const you = p.id === me ? " you" : "";
-    return `<tr class="${you.trim()}"><td>${i + 1}.</td><td><i style="background:${p.color}"></i>${escape(p.name)}</td><td>${Math.round(p.score).toLocaleString()}</td></tr>`;
-  });
-  const myRank = ranked.findIndex((p) => p.id === me);
-  if (myRank >= 5) {
-    const p = ranked[myRank];
-    rows.push(`<tr class="you"><td>${myRank + 1}.</td><td><i style="background:${p.color}"></i>${escape(p.name)}</td><td>${Math.round(p.score).toLocaleString()}</td></tr>`);
+  // The leaderboard: who's still in, by nutrients held right now, then the
+  // eliminated, greyed out, most recently out first.
+  const playing = world.players.filter((p) => p.alive).sort((a, b) => b.held - a.held);
+  const diedAt = (id: PlayerId) => net?.world ? 0 : world.stats.get(id)?.diedAt ?? 0;
+  const out = world.players.filter((p) => !p.alive).sort((a, b) => diedAt(b.id) - diedAt(a.id));
+  const row = (p: (typeof world.players)[number], rank: string, value: string, cls: string) =>
+    `<tr class="${cls}"><td>${rank}</td><td><i style="background:${p.color}"></i>${escape(p.name)}</td><td>${value}</td></tr>`;
+  const rows = playing.slice(0, 5).map((p, i) =>
+    row(p, `${i + 1}.`, Math.floor(p.held).toLocaleString(), p.id === me ? "you" : ""));
+  const myRank = playing.findIndex((p) => p.id === me);
+  if (myRank >= 5) rows.push(row(playing[myRank], `${myRank + 1}.`, Math.floor(playing[myRank].held).toLocaleString(), "you"));
+  for (const p of out.slice(0, Math.max(0, 8 - rows.length))) {
+    rows.push(row(p, "", "out", p.id === me ? "you out" : "out"));
   }
 
   const watching = spectating ? "spectating · " : "";
@@ -297,15 +446,17 @@ function updateHud(): void {
     (spectating ? "" : `<div class="stats">Colonies: <b>${mine.length}</b> · Nutrients: <b>${total}</b></div>`) +
     `<div class="mode">${mode}</div>`;
 
-  if (net?.status === "intermission") {
+  if (net?.status === "intermission" && !spectating) {
+    if (!roundSummaryShown) showRoundSummary(net);
+  } else if (net?.status === "intermission") {
     banner.innerHTML = `${net.winner ? `${escape(net.winner.name)} gathered the most` : "Round over"}<small>New substrate in a moment…</small>`;
     banner.hidden = false;
+  } else if (solo && !spectating) {
+    // Wiped out or won: the summary waits for the player, no automatic restart.
+    if (summaryFor !== solo && (solo.ended || !solo.player(SOLO_PLAYER)?.alive)) showSoloSummary(solo);
   } else if (solo && solo.ended && soloRestart === undefined) {
-    const won = solo.winner === SOLO_PLAYER;
     const winner = solo.winner == null ? null : solo.player(solo.winner);
-    const headline = spectating
-      ? winner ? `${escape(winner.name)} prevails` : "Every network withered"
-      : won ? "Your network prevails" : "Your network withered";
+    const headline = winner ? `${escape(winner.name)} prevails` : "Every network withered";
     banner.innerHTML = `${headline}<small>New substrate in a moment… (or press R)</small>`;
     banner.hidden = false;
     soloRestart = window.setTimeout(restartSolo, ROUND_RESTART_DELAY_MS);
@@ -324,6 +475,7 @@ let last = performance.now();
 let acc = 0;
 let reportedError = false;
 let lastHud = 0;
+let lastStats = 0;
 function frame(now: number): void {
   const dt = Math.min(250, now - last);
   last = now;
@@ -343,6 +495,10 @@ function frame(now: number): void {
     if (now - lastHud > 200) {
       lastHud = now;
       updateHud();
+    }
+    if (statsPanel.open && now - lastStats > 1000) {
+      lastStats = now;
+      statsPanel.refresh();
     }
   } catch (err) {
     if (!reportedError) {

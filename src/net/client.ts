@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION, decode, encode, type PlayerDTO, type ServerMsg, type Snapshot } from "./protocol";
 import { generateArena } from "../sim/arena";
+import { mergeStats, type PlayerStats } from "../sim/stats";
 import type { Command, PlayerId } from "../sim/types";
 import { World } from "../sim/world";
 
@@ -21,6 +22,8 @@ export class NetClient {
   endsIn = 0;
   online = 0;
   winner: PlayerDTO | null = null;
+  /** This round's match stats, as far as the server lets us see them. */
+  stats = new Map<PlayerId, PlayerStats>();
   /** Ids of falls (and neutral boosts) being drawn from memory rather than current sight. */
   readonly remembered = new Set<number>();
   onRound: (() => void) | null = null;
@@ -116,6 +119,9 @@ export class NetClient {
       case "snap":
         this.applySnapshot(msg);
         return;
+      case "stats":
+        for (const s of msg.stats) mergeStats(this.stats, s);
+        return;
       case "error":
         console.warn("server:", msg.message);
         return;
@@ -126,6 +132,8 @@ export class NetClient {
     this.world = new World(generateArena(seed, arenaPlayers, radius), seed);
     this.world.endOnLastStanding = false;
     this.remembered.clear();
+    this.stats = new Map(); // a new map, so a summary still showing keeps the old round's
+
   }
 
   /** Rebuilds the visible world from a snapshot, keeping remembered falls. */
@@ -180,7 +188,7 @@ export class NetClient {
     world.players.length = 0;
     for (const p of snap.players) {
       world.players.push({
-        id: p.id, name: p.name, color: p.color, isBot: false, alive: p.alive, score: p.score,
+        id: p.id, name: p.name, color: p.color, isBot: false, alive: p.alive, score: p.score, held: p.h ?? 0, // an older server sends no h
         abilities: { flowUntil: p.fu, flowReadyAt: p.fr, severReadyAt: p.sr },
       });
     }

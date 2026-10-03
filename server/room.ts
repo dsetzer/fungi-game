@@ -16,6 +16,7 @@ import type {
 import { generateArena } from "../src/sim/arena";
 import { runBot } from "../src/sim/bot";
 import { spawnInto } from "../src/sim/spawn";
+import { toStatsDTO, type StatsDTO } from "../src/sim/stats";
 import type { Command, Player, PlayerId } from "../src/sim/types";
 import { visibleNodes } from "../src/sim/vision";
 import { World } from "../src/sim/world";
@@ -45,6 +46,8 @@ export class Room {
   ticksLeft = 0;
   intermission = false;
   readonly members = new Set<Member>();
+  /** Per member, how much of each player's stats history they've been sent. */
+  private statsSent = new WeakMap<Member, Map<PlayerId, number>>();
 
   constructor() {
     this.startRound();
@@ -81,6 +84,7 @@ export class Room {
     this.world.placeBoosts(BOOST_START);
     this.ticksLeft = ROUND_SECONDS * SIM_HZ;
     this.intermission = false;
+    this.statsSent = new WeakMap();
 
     // Everyone still connected gets a fresh colony in the new arena.
     for (const m of this.members) {
@@ -140,7 +144,26 @@ export class Room {
       if (player && !player.alive) spawnInto(this.world, player);
     }
 
+    if (this.world.tick % SIM_HZ === 0) for (const m of this.members) this.sendStats(m);
     if (--this.ticksLeft <= 0) this.endRound();
+  }
+
+  /**
+   * What stats a member may see, sent as whatever they haven't had: their own
+   * while playing, everyone's when spectating or once the round is over.
+   */
+  sendStats(m: Member, everyone = m.spectator === true): void {
+    let sent = this.statsSent.get(m);
+    if (!sent) this.statsSent.set(m, (sent = new Map()));
+    const out: StatsDTO[] = [];
+    for (const p of this.world.players) {
+      if (!everyone && p.id !== m.player) continue;
+      const s = this.world.stats.get(p.id);
+      if (!s) continue;
+      out.push(toStatsDTO(p.id, s, sent.get(p.id) ?? 0));
+      sent.set(p.id, s.history.time.length);
+    }
+    if (out.length) m.send({ t: "stats", stats: out });
   }
 
   private endRound(): void {
@@ -151,7 +174,10 @@ export class Room {
     const info = this.roundInfo();
     const players = this.playerDTOs();
     const winnerDTO = winner ? toPlayerDTO(winner) : null;
-    for (const m of this.members) m.send({ t: "round", round: info, players, winner: winnerDTO });
+    for (const m of this.members) {
+      this.sendStats(m, true); // before the round message, so the summary has it
+      m.send({ t: "round", round: info, players, winner: winnerDTO });
+    }
   }
 
   /** Leaderboard rows: everyone still playing, plus anyone who left with a score. */
@@ -208,7 +234,7 @@ export class Room {
 function toPlayerDTO(p: Player): PlayerDTO {
   const a = p.abilities;
   return {
-    id: p.id, name: p.name, color: p.color, score: Math.round(p.score), alive: p.alive,
+    id: p.id, name: p.name, color: p.color, score: Math.round(p.score), h: Math.round(p.held), alive: p.alive,
     fu: a.flowUntil, fr: a.flowReadyAt, sr: a.severReadyAt,
   };
 }

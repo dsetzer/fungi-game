@@ -53,6 +53,7 @@ import {
   reach,
 } from "../config";
 import { generateArena, type Arena } from "./arena";
+import { newStats, sample, type PlayerStats } from "./stats";
 import {
   dist,
   distToSegmentSq,
@@ -87,6 +88,8 @@ export class World {
   readonly pipes = new Map<EntityId, Pipe>();
   readonly barriers = new Map<EntityId, Barrier>();
   readonly players: Player[] = [];
+  /** Match statistics per player (stats.ts), kept as the world steps. */
+  readonly stats = new Map<PlayerId, PlayerStats>();
   winner: PlayerId | null = null;
   ended = false;
   /** Server rounds end on a timer and respawn the dead, so last-standing is off. */
@@ -133,11 +136,12 @@ export class World {
   addPlayer(name: string, isBot: boolean): Player {
     const id = this.players.length + 1;
     const player: Player = {
-      id, name, isBot, alive: true, score: 0,
+      id, name, isBot, alive: true, score: 0, held: 0,
       abilities: { flowUntil: 0, flowReadyAt: 0, severReadyAt: 0 },
       color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length],
     };
     this.players.push(player);
+    this.stats.set(id, newStats());
     return player;
   }
 
@@ -554,11 +558,13 @@ export class World {
         parent.nutrients -= carried;
         const child = this.addColony(cmd.player, cmd.x, cmd.y, carried);
         this.addPipe(cmd.from, child.id, cmd.player);
+        this.tally(cmd.player).throws++;
         return;
       }
       case "connect": {
         if (this.canConnect(cmd.player, cmd.from, cmd.to).ok) {
           this.addPipe(cmd.from, cmd.to, cmd.player);
+          this.tally(cmd.player).hyphae++;
         }
         return;
       }
@@ -581,6 +587,9 @@ export class World {
         const bar: Barrier = { id, owner: cmd.player, anchor: from.id, x: cmd.x, y: cmd.y, a, b };
         this.barriers.set(id, bar);
         if (WALLS_CUT_EXISTING_PIPES) this.cutPipesCrossing(bar);
+        const s = this.tally(cmd.player);
+        s.walls += WALL_COST;
+        s.wallsBuilt++;
         return;
       }
       case "demolish": {
@@ -601,6 +610,11 @@ export class World {
         return;
       }
     }
+  }
+
+  /** A player's stats; a throwaway for an id with none (a client's placeholder world). */
+  private tally(player: PlayerId): PlayerStats {
+    return this.stats.get(player) ?? newStats();
   }
 
   private addPipe(from: EntityId, to: EntityId, owner: PlayerId): Pipe {
@@ -631,6 +645,7 @@ export class World {
     this.captureBoosts();
     this.removeDead();
     this.updatePlayers();
+    if (!this.ended && this.tick % SIM_HZ === 0) this.sampleStats();
     this.spawnBoosts();
   }
 
@@ -644,6 +659,7 @@ export class World {
       const src = this.nodes.get(p.from);
       if (dst?.kind !== "boost" || dst.owner != null || src?.owner == null) continue;
       dst.owner = src.owner;
+      this.tally(src.owner).boosts++;
       this.boostsChanged();
     }
   }
@@ -697,6 +713,12 @@ export class World {
       if (dst.owner != null && dst.owner !== src.owner) {
         const earner = this.player(dst.owner);
         if (earner) earner.score += gained;
+        const s = this.tally(dst.owner);
+        if (src.owner == null) s.gathered += gained;
+        else {
+          s.drained += gained;
+          this.tally(src.owner).lost += amount;
+        }
       }
       add(p.from, -amount);
       add(p.to, gained);
@@ -712,7 +734,10 @@ export class World {
       if (n.owner == null && !FALLS_PAY_UPKEEP) continue;
       const inAmt = inflow.get(n.id) ?? 0;
       const sustained = inAmt > EPS && inAmt + EPS >= demand(n.id);
-      if (!sustained) add(n.id, -UPKEEP_PER_SEC * DT);
+      if (!sustained) {
+        add(n.id, -UPKEEP_PER_SEC * DT);
+        if (n.owner != null) this.tally(n.owner).upkeep += UPKEEP_PER_SEC * DT;
+      }
     }
 
     for (const n of this.nodes.values()) {
@@ -730,6 +755,13 @@ export class World {
       if (n.nutrients > 0) continue;
       this.nodes.delete(n.id);
       if (n.kind === "boost") this.boostsChanged();
+      if (n.kind === "colony" && n.owner != null) {
+        this.tally(n.owner).coloniesLost++;
+        // A kill for every rival who was drawing on it when it ran dry.
+        const killers = new Set<PlayerId>();
+        for (const p of this.pipes.values()) if (p.from === n.id && p.owner !== n.owner) killers.add(p.owner);
+        for (const k of killers) this.tally(k).kills++;
+      }
       for (const p of this.pipes.values()) {
         if (p.from === n.id || p.to === n.id) this.pipes.delete(p.id);
       }
@@ -743,8 +775,23 @@ export class World {
     // A player lives on while they have a colony; boosts alone don't count, and
     // go back to neutral when their holder is wiped out.
     const alive = new Set<PlayerId>();
-    for (const n of this.nodes.values()) if (n.kind === "colony" && n.owner != null) alive.add(n.owner);
-    for (const pl of this.players) pl.alive = alive.has(pl.id);
+    const held = new Map<PlayerId, number>();
+    for (const n of this.nodes.values()) {
+      if (n.kind !== "colony" || n.owner == null) continue;
+      alive.add(n.owner);
+      held.set(n.owner, (held.get(n.owner) ?? 0) + n.nutrients);
+    }
+    for (const pl of this.players) {
+      pl.held = held.get(pl.id) ?? 0;
+      const was = pl.alive;
+      pl.alive = alive.has(pl.id);
+      if (was && !pl.alive && this.stats.has(pl.id)) {
+        const s = this.stats.get(pl.id)!;
+        s.deaths++;
+        s.diedAt = this.tick;
+        sample(s, this.tick, 0, 0); // the line drops to zero rather than just stopping
+      }
+    }
     for (const n of this.nodes.values()) {
       if (n.kind === "boost" && n.owner != null && !alive.has(n.owner)) {
         n.owner = null;
@@ -758,6 +805,22 @@ export class World {
     if (alive.size <= threshold) {
       this.ended = true;
       this.winner = alive.size === 1 ? [...alive][0] : null;
+      this.sampleStats(); // the graphs run to the final tick
+    }
+  }
+
+  /** One history sample for everyone still in the match (stats.ts). */
+  private sampleStats(): void {
+    const held = new Map<PlayerId, number>();
+    const count = new Map<PlayerId, number>();
+    for (const n of this.nodes.values()) {
+      if (n.kind !== "colony" || n.owner == null) continue;
+      held.set(n.owner, (held.get(n.owner) ?? 0) + n.nutrients);
+      count.set(n.owner, (count.get(n.owner) ?? 0) + 1);
+    }
+    for (const pl of this.players) {
+      const s = this.stats.get(pl.id);
+      if (s && pl.alive) sample(s, this.tick, held.get(pl.id) ?? 0, count.get(pl.id) ?? 0);
     }
   }
 }

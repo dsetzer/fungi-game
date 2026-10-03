@@ -38,7 +38,16 @@ page is served by the game server itself, the field defaults to that server.
 
 **Spectate** (next to Play on the menu) watches the whole arena, fog-free, without playing: a local
 all-bot match when the server field is empty, or a live server's game when it isn't. Spectators get
-no colony, can't issue commands, and don't count toward the arena size.
+no colony, can't issue commands, and don't count toward the arena size. **Stats** (or Tab) opens a
+live panel with everyone's graphs and totals.
+
+**Leaderboard:** players still in, ranked by the nutrients they hold right now; anyone wiped out is
+greyed out at the bottom.
+
+**Match stats:** when you're wiped out, win, or leave, a summary shows graphs of your nutrients in
+and out (gathered, drained from rivals, spent, lost to rivals), nutrients held and colonies over time,
+and a table of totals. Solo, it compares everyone; online, leaving mid-round shows only your own
+(a rival's live numbers would see through the fog), and the round-end summary shows everyone's.
 
 Open http://localhost:5173 in two tabs to play against yourself — add `?name=Armillaria` so the
 tabs don't share a stored name. After `npm run build` the server also hosts the client itself on
@@ -73,6 +82,7 @@ servers using **wss**, so a remote server joined from Pages must serve wss. Two 
 | Right-drag from anywhere else, or WASD | Pan |
 | Mouse wheel | Zoom |
 | R | New round (solo and spectated local matches only) |
+| Tab | Live stats panel (spectating) |
 | F | Toggle the render profiler |
 
 ## Multiplayer
@@ -101,6 +111,7 @@ src/
     arena.ts         seeded cave generation + WallIndex for line-of-sight queries
     spawn.ts         where a joining or respawning player lands
     vision.ts        fog-of-war queries, used by the server to filter snapshots
+    stats.ts         per-player match stats and history, and their wire format
     bot/             computer players (bot-design.md); issue ordinary Commands, no special access
     match.ts         one authoritative tick (bots + world.step)
     geometry.ts      segment/circle maths, seeded RNG
@@ -113,9 +124,10 @@ src/
     camera.ts        eased fly-to camera
   net/               protocol (shared with the server) + client connection
   input/             mouse/keyboard → Commands
+  ui/statsPanel.ts   the stats panel: graphs and totals
   main.ts            menu, fixed-timestep loop, HUD, solo fallback
 server/              rounds, join/respawn, per-player snapshots
-tests/               vitest specs for the sim, bots, the server room and the camera
+tests/               vitest specs for the sim, bots, stats, the server room and the camera
 tools/mapgen/        experimental map-generator previews; not used by the game (see below)
 reference/           screenshots of the original game
 ```

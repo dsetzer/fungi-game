@@ -22,7 +22,7 @@ const CLICK_SLOP = 4; // screen px of movement before a right-press becomes a dr
  * play is hardest to aim. Not the node's territory: that would swallow every throw
  * into your own territory. The nearest node in range wins.
  */
-const SNAP_PX = 28;
+const SNAP_PX = 40;
 
 export interface DragState {
   from: EntityId;

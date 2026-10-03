@@ -81,6 +81,7 @@ export class Room {
     const radius = radiusForPlayers(this.arenaPlayers);
     this.world = new World(generateArena(this.seed, this.arenaPlayers, radius), this.seed);
     this.world.endOnLastStanding = false;
+    this.world.seedFalls();
     this.world.placeBoosts(BOOST_START);
     this.ticksLeft = ROUND_SECONDS * SIM_HZ;
     this.intermission = false;

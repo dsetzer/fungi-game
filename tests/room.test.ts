@@ -143,3 +143,12 @@ describe("spectators", () => {
     expect(room.world.nodes.size).toBeLessThanOrEqual(before);
   });
 });
+
+describe("server map", () => {
+  it("starts each round with neutral falls scattered, the count respawning tops up to", () => {
+    const room = new Room();
+    const falls = () => [...room.world.nodes.values()].filter((n) => n.kind === "fall").length;
+    expect(room.world.fallTarget).toBeGreaterThan(20);
+    expect(falls()).toBe(room.world.fallTarget);
+  });
+});

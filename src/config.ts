@@ -76,6 +76,9 @@ export const WALLS_CUT_EXISTING_PIPES = false;
 // right next to each other and the rest are scattered around. Sizes vary wildly
 // and have nothing to do with position, so no two groups look alike.
 export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one group per spawn
+// Falls respawn through a round, like boosts: while the map holds fewer falls than
+// it started with, a new group appears somewhere random, open and unclaimed this often.
+export const FALL_SPAWN_SECONDS = 6;
 export const FALL_CLUSTER_BLOBS_MIN = 1;
 export const FALL_CLUSTER_BLOBS_MAX = 6;
 export const FALL_CLUSTER_TIGHT_MAX = 3; // falls packed right next to each other

@@ -748,3 +748,36 @@ describe("sustaining a fall", () => {
     expect(mine(world, ...ring.map((n) => n.id))).toBeLessThanOrEqual(before + 1e-6);
   });
 });
+
+describe("fall respawning", () => {
+  const falls = (world: World) => [...world.nodes.values()].filter((n) => n.kind === "fall");
+
+  it("tops the map back up to its starting falls, a group at a time, outside anyone's territory", () => {
+    const world = World.createMatch(7);
+    world.endOnLastStanding = false;
+    const target = world.fallTarget;
+    expect(target).toBeGreaterThan(0);
+    // Eat half the map's food.
+    const eaten = falls(world).slice(0, Math.floor(target / 2));
+    for (const f of eaten) world.nodes.delete(f.id);
+    const before = falls(world).length;
+    const old = new Set(falls(world).map((f) => f.id));
+    for (let i = 0; i < 6 * SIM_HZ; i++) world.step();
+    const fresh = falls(world).filter((f) => !old.has(f.id));
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(fresh.length).toBeLessThanOrEqual(6); // one group
+    expect(falls(world).length).toBe(before + fresh.length);
+    const colonies = [...world.nodes.values()].filter((n) => n.kind === "colony");
+    for (const f of fresh) {
+      for (const c of colonies) expect(dist(f.x, f.y, c.x, c.y)).toBeGreaterThanOrEqual(world.auraOf(c));
+    }
+  });
+
+  it("never grows the map past what it started with", () => {
+    const world = World.createMatch(7);
+    world.endOnLastStanding = false;
+    const target = world.fallTarget;
+    for (let i = 0; i < 30 * SIM_HZ; i++) world.step();
+    expect(falls(world).length).toBeLessThanOrEqual(target);
+  });
+});

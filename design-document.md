@@ -98,13 +98,13 @@ There's no separate "drain" tool — draining is just a pipeline where you start
 Nutrient falls are resource patches scattered across the arena at the start of each round, functioning as neutral, unowned nodes with their own nutrient pool.
 
 - Draining one normally depletes its pool — once it hits zero, it disappears.
-- **Falls are placed once, at arena generation, and never respawn.** Every fall in a round is a finite, shrinking pool — the map gets poorer as the round goes on, which is what pushes players outward and eventually into each other. (Boosts, Section 6.7, are the opposite: they respawn.)
+- **Falls respawn at random, never in place.** Every fall is a finite, shrinking pool, but while the map holds fewer falls than it started with, a new group appears somewhere random, open and unclaimed (like boosts, Section 6.7). Food near you still runs out, which is what pushes players outward and eventually into each other; the map as a whole just doesn't starve over a long round.
 - **Draining a fall is 1:1, like every hypha:** ten out of the fall arrive as ten in the colony (hyphae run at 10/s). A fall is food — a finite pool you pull into your network — not a multiplier.
 - **Sustaining a fall needs Harvest** (Section 6.7). Run a pipeline *into* a fall from one of your nodes while another draws *out* of it, and the two flows offset: the pool stays flat instead of being consumed. Without Harvest that nets nothing. Holding Harvest, your fall lines yield double — ten out, twenty in — so the same loop pays **+10/s forever**, a full line's worth. That is the discovery a Harvest boost offers: whoever holds it can build an endless income nobody else can, and everyone else has a reason to take it from them.
 
   The counterplay is what makes it fair, and there are three routes:
   - **Steal the flow.** Drain the loop's colonies directly (Section 6.3) and take the nutrients back out of it.
-  - **Kill the source.** Attach your own drain line to the fall. Its total outflow now exceeds what its owner feeds in, so the pool bleeds the difference and eventually empties — and since falls never respawn, that disables the income permanently. Attacking the well beats attacking the bucket.
+  - **Kill the source.** Attach your own drain line to the fall. Its total outflow now exceeds what its owner feeds in, so the pool bleeds the difference and eventually empties — and since a fall never respawns in place, that disables the income permanently. Attacking the well beats attacking the bucket.
   - **Take the Harvest.** Drain the Harvest boost dry and every loop its holder built goes back to netting nothing.
 
 > **Open item:** whether nutrient falls pay their own upkeep (Section 5) like player nodes do, or are exempt, is unconfirmed — this materially affects how valuable the sustaining trick above is and needs to be pinned down during prototyping.

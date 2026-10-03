@@ -175,9 +175,12 @@ noted.
   Feeding a fall while draining it holds its pool flat but nets nothing, unless you hold the
   Harvest boost, which doubles your fall lines' yield and turns that loop into +10/s forever.
   That loop is the prize, and it's contestable: a rival's drain line pushes the
-  fall's outflow past what you feed it, and since falls never respawn, emptying one kills that
-  income for the rest of the round. Colony-to-colony transfers are 1:1, so a ring of colonies with
+  fall's outflow past what you feed it, and since a fall respawns somewhere random rather than
+  where it was, emptying one kills that income for good. Colony-to-colony transfers are 1:1, so a ring of colonies with
   no fall in it generates nothing.
+- **Fall respawning:** while the map holds fewer falls than it started with, a new group (1–6)
+  appears every 6 s somewhere random, open and outside everyone's territory. The server's map
+  starts with neutral groups scattered across it too (70 on a standard arena, scaled by area).
 - **Attacking:** a hypha draining a *rival* is an ordinary hypha — the same 10/s as any other,
   1:1. To drain a colony faster than its owner can feed it, put more hyphae on it (funnelling).
 - **Pipe caps:** only outgoing hyphae are capped (4 per colony); incoming is unlimited, so

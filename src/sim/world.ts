@@ -34,9 +34,11 @@ import {
   FALL_CLUSTER_TIGHT_MAX,
   FALL_POOL_MAX,
   FALL_POOL_MIN,
+  FALL_SPAWN_SECONDS,
   FALLS_PAY_UPKEEP,
   MAX_OUT_PIPES_PER_COLONY,
   NEUTRAL_FALL_CLUSTERS,
+  ARENA_RADIUS,
   PIPE_RATE_PER_SEC,
   PLAYER_COUNT,
   SPAWN_CLUSTER_DISTANCE,
@@ -96,6 +98,8 @@ export class World {
   endOnLastStanding = true;
   /** How the computer players in this match play (solo and spectate). */
   botLevel: BotLevel = "normal";
+  /** Falls the map started with; respawning tops it back up to this (spawnFalls). */
+  fallTarget = 0;
 
   private nextId = 1;
   private queue: Command[] = [];
@@ -126,7 +130,7 @@ export class World {
       };
       world.addFallCluster(centre, s);
     }
-    world.scatterNeutralClusters(NEUTRAL_FALL_CLUSTERS);
+    world.seedFalls();
     world.placeBoosts(BOOST_START);
     return world;
   }
@@ -222,7 +226,23 @@ export class World {
     return placed;
   }
 
-  private scatterNeutralClusters(count: number): void {
+  /**
+   * The neutral fall groups a fresh map starts with — NEUTRAL_FALL_CLUSTERS on a
+   * standard arena, scaled by area — and the fall count respawning keeps it at.
+   */
+  seedFalls(): void {
+    const scale = (this.arena.radius / ARENA_RADIUS) ** 2;
+    this.scatterNeutralClusters(Math.round(NEUTRAL_FALL_CLUSTERS * scale));
+    let falls = 0;
+    for (const n of this.nodes.values()) if (n.kind === "fall") falls++;
+    this.fallTarget = falls;
+  }
+
+  /**
+   * Fall groups dropped at random. Mid-round (`unclaimed`) they also stay out of
+   * every player's territory: food appearing inside a network would be a free gift.
+   */
+  private scatterNeutralClusters(count: number, unclaimed = false): void {
     let placed = 0;
     for (let attempt = 0; placed < count && attempt < count * 50; attempt++) {
       const a = this.rng() * Math.PI * 2;
@@ -238,7 +258,8 @@ export class World {
       );
       if (crowded) continue;
       // Skip pockets walled off from the main cave system — nobody could ever reach them.
-      if (!nearSpawn && this.arena.isReachable(c) && this.isFreeSpot(c, NODE_SPACING * 2)) {
+      const free = this.isFreeSpot(c, NODE_SPACING * 2, unclaimed ? 0 : undefined);
+      if (!nearSpawn && this.arena.isReachable(c) && free) {
         this.addFallCluster(c);
         placed++;
       }
@@ -647,6 +668,15 @@ export class World {
     this.updatePlayers();
     if (!this.ended && this.tick % SIM_HZ === 0) this.sampleStats();
     this.spawnBoosts();
+    this.spawnFalls();
+  }
+
+  /** Falls respawn through the round: one random group at a time, up to the starting count. */
+  private spawnFalls(): void {
+    if (this.tick % (FALL_SPAWN_SECONDS * SIM_HZ) !== 0) return;
+    let count = 0;
+    for (const n of this.nodes.values()) if (n.kind === "fall") count++;
+    if (count < this.fallTarget) this.scatterNeutralClusters(1, true);
   }
 
   /**

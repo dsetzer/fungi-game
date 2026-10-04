@@ -4,7 +4,7 @@ import { emptyArena } from "../src/sim/arena";
 import { BOT_LEVELS, aim, runBot } from "../src/sim/bot";
 import { ACTION_EFFORT, ACTION_JITTER } from "../src/sim/bot/profile";
 import { makeRng } from "../src/sim/geometry";
-import { stepMatch } from "../src/sim/match";
+import { setDifficulty, stepMatch } from "../src/sim/match";
 import type { BoostKind, Command } from "../src/sim/types";
 import { World } from "../src/sim/world";
 
@@ -58,6 +58,26 @@ describe("bots", () => {
       // Jittered: not every gap the same.
       if (gaps.length > 2) expect(new Set(gaps).size, level).toBeGreaterThan(1);
     }
+  });
+});
+
+describe("match difficulty", () => {
+  const levels = (world: World) => world.players.filter((p) => p.isBot).map((p) => p.level);
+
+  it("mixes the bots by the level picked, and names them by it", () => {
+    for (const [level, mix] of [["easy", ["easy", "easy", "easy"]], ["normal", ["normal", "normal", "easy"]], ["hard", ["hard", "hard", "normal"]]] as const) {
+      const world = World.createMatch(5, 4);
+      setDifficulty(world, level);
+      expect(levels(world), level).toEqual(mix);
+      expect(world.players.find((p) => p.isBot)!.name).toBe(`Bot 1 · ${mix[0]}`);
+      expect(world.players.find((p) => !p.isBot)!.level).toBeUndefined(); // you
+    }
+  });
+
+  it("cycles the mix when every seat is a bot (spectating)", () => {
+    const world = World.createMatch(5, 4, true);
+    setDifficulty(world, "normal");
+    expect(levels(world)).toEqual(["normal", "normal", "easy", "normal"]);
   });
 });
 

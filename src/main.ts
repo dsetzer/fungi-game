@@ -4,7 +4,7 @@ import { NetClient } from "./net/client";
 import { Camera } from "./render/camera";
 import { BOOST_NAMES, Renderer } from "./render/renderer";
 import { emptyArena } from "./sim/arena";
-import { stepMatch } from "./sim/match";
+import { setDifficulty, stepMatch } from "./sim/match";
 import type { BotLevel } from "./sim/bot";
 import { BOOST_KINDS, type BoostKind, type Command, type PlayerId } from "./sim/types";
 import { World } from "./sim/world";
@@ -385,7 +385,7 @@ function pickName(): string {
 function startSolo(): void {
   if (solo) return;
   solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
-  solo.botLevel = botLevel;
+  setDifficulty(solo, botLevel);
   centredOn = null;
 }
 
@@ -395,7 +395,7 @@ function restartSolo(): void {
   setSpectating(watchOnly); // back to playing after watching the rest of a match
   if (panelKind === "summary") closePanel();
   solo = World.createMatch((Math.random() * 2 ** 31) | 0, undefined, spectating);
-  solo.botLevel = botLevel;
+  setDifficulty(solo, botLevel);
   centredOn = null;
   banner.hidden = true;
 }

@@ -32,6 +32,10 @@ Every level plays the same brain; three things set them apart (`profile.ts`):
 | Normal | every 2 s | ~7% off | 3 s | 2 | Balanced |
 | Hard | every 1.4 s | ~3% off | 1.5 s | any | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less; evacuates a rich colony being funnelled (once per 75 s, 400+ stores only) |
 
+**A match mixes levels** (`match.ts`): the difficulty picked sets the mix — easy
+is all easy; normal is normal, normal, easy; hard is hard, hard, normal (no easy
+bot: a free meal snowballs whoever eats it first) — so no two bots tie.
+
 **Lines on one colony** is a hard cap that guarantees each level out-drains the
 one below on any target: two lines still overpower a colony left alone (slowly),
 so normal can finish a passive opponent, but only hard can funnel.

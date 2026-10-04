@@ -158,7 +158,9 @@ weighted by the posture, checked against the rules best-first, and the best lega
 Difficulty is hands, reaction and temperament: one action at a time with a gap after each
 (Easy 5 s, Normal 2 s, Hard 1.4 s on average, each varied ±40%); a reaction delay before answering anything new that comes
 into contact (5 s, 3 s, 1.5 s); and what it reaches for — easy walls rivals off on sight, hard
-latches on and drains them. A bot stops throwing at 40 colonies.
+latches on and drains them. A bot stops throwing at 40 colonies. The difficulty picked sets a mix,
+so no two bots are quite equal: Easy is all easy bots, Normal is normal, normal and easy, Hard is
+hard, hard and normal; each bot's level shows in its name.
 
 ## Decisions made for open design items
 

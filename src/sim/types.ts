@@ -1,3 +1,5 @@
+import type { BotLevel } from "./bot/profile";
+
 export type PlayerId = number;
 export type EntityId = number;
 
@@ -6,6 +8,8 @@ export interface Player {
   name: string;
   color: string;
   isBot: boolean;
+  /** A bot's own difficulty (match.ts, setDifficulty); unset means the world's. */
+  level?: BotLevel;
   alive: boolean;
   /** Nutrients drawn into this player's network from outside it — decides online rounds. */
   score: number;

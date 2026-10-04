@@ -83,6 +83,11 @@ export function decide(board: Board): Candidate | null {
     if (c.value < MIN_VALUE || checked >= MAX_CHECKED) break;
     // Not yet: the bot hasn't had its reaction time since what this answers appeared.
     if (c.reactsTo && !c.reactsTo.every((k) => board.ready(k))) continue;
+    // Its level's cap on lines into one rival colony (profile.ts).
+    if (c.cmd.type === "connect") {
+      const src = board.world.nodes.get(c.cmd.from);
+      if (src?.kind === "colony" && src.owner != null && src.owner !== board.me && board.drainRoom(src) <= 0) continue;
+    }
     checked++;
     if (c.valid()) return c;
   }

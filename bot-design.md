@@ -26,11 +26,15 @@ sight. This is the spec the code in `src/sim/bot/` implements.
 
 Every level plays the same brain; three things set them apart (`profile.ts`):
 
-| | Hands | Aim | Reaction | Temperament |
-|---|---|---|---|---|
-| Easy | an action every 5 s | throws ~12% off | 5 s | Defensive: walls a rival off on sight, even one it could drain; drains reluctantly; never goes to war |
-| Normal | every 2 s | ~7% off | 3 s | Balanced |
-| Hard | every 1.4 s | ~3% off | 1.5 s | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less; evacuates a rich colony being funnelled (once per 75 s, 400+ stores only) |
+| | Hands | Aim | Reaction | Lines on one colony | Temperament |
+|---|---|---|---|---|---|
+| Easy | an action every 5 s | throws ~12% off | 5 s | 1 | Defensive: walls a rival off on sight, even one it could drain; drains reluctantly; never goes to war |
+| Normal | every 2 s | ~7% off | 3 s | 2 | Balanced |
+| Hard | every 1.4 s | ~3% off | 1.5 s | any | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less; evacuates a rich colony being funnelled (once per 75 s, 400+ stores only) |
+
+**Lines on one colony** is a hard cap that guarantees each level out-drains the
+one below on any target: two lines still overpower a colony left alone (slowly),
+so normal can finish a passive opponent, but only hard can funnel.
 
 **Hands are human-shaped.** The gap is the level's average, ±40% at random, and
 scaled by the action: a throw or a new hypha (a precise drag onto a target) takes

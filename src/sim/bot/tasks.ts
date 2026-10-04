@@ -383,7 +383,8 @@ export class Siege implements Task {
       .map((p) => board.world.nodes.get(p.to))
       .filter((c): c is GameNode => !!c && c.owner === board.me);
     const dying = v.rate < 0 && v.nutrients / -v.rate < SIEGE_KILL_SECONDS;
-    if (!dying) out.push(...this.surround(board, v, latched, lineValue));
+    // Throw more in only if the temperament lets it add another line here.
+    if (!dying && board.drainRoom(v) > 0) out.push(...this.surround(board, v, latched, lineValue));
     // Its reinforcements: sever them, wall first.
     if (board.holds("sever")) {
       for (const p of board.feedsInto.get(v.id) ?? []) {

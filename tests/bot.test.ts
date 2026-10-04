@@ -138,6 +138,37 @@ describe("bot behaviour (bot-design.md)", () => {
     expect(child!.nutrients).toBeGreaterThan(500); // most of it got out
   });
 
+  describe("drain lines on one rival", () => {
+    // Four colonies of ours round a weak rival colony, all of them in reach.
+    function ring(level: "easy" | "normal" | "hard", rivalLines: number) {
+      const { world, bot, rival } = duel();
+      const prey = world.addColony(rival.id, 0, 0, 300);
+      const ours = [0, 1, 2, 3].map((k) => world.addColony(bot.id, Math.cos(k * 1.57) * 300, Math.sin(k * 1.57) * 300, 600));
+      // The rival's own lines on us, from colonies of its far off.
+      for (let k = 0; k < rivalLines; k++) {
+        const hunter = world.addColony(rival.id, Math.cos(k * 1.57 + 0.8) * 650, Math.sin(k * 1.57 + 0.8) * 650, 5000);
+        world.enqueue({ type: "connect", player: rival.id, from: ours[k].id, to: hunter.id });
+      }
+      world.step();
+      // The most lines it ever held on the prey (hard may well kill it).
+      let most = 0;
+      for (let i = 0; i < 25 * SIM_HZ; i++) {
+        runBot(world, bot.id, level);
+        world.step();
+        most = Math.max(most, [...world.pipes.values()].filter((p) => p.from === prey.id && p.owner === bot.id).length);
+      }
+      return most;
+    }
+
+    it("normal runs at most two on one colony, even when attacked", () => {
+      expect(ring("normal", 0)).toBe(2);
+      expect(ring("normal", 4)).toBeLessThanOrEqual(2);
+    });
+    it("hard stacks more than normal can", () => {
+      expect(ring("hard", 0)).toBeGreaterThanOrEqual(3);
+    });
+  });
+
   it("normal never evacuates", () => {
     const { world, bot, rival } = duel();
     const rich = world.addColony(bot.id, 0, 0, 900);

@@ -297,6 +297,11 @@ export class Board {
     return Math.min(c.nutrients, rate * HORIZON) * (1 + ENEMY_LOSS) + (dies ? COLONY : 0);
   }
 
+  /** Drain lines we may still add on this rival colony (profile.maxDrains). */
+  drainRoom(target: GameNode): number {
+    return this.profile.maxDrains - (this.myDrains.get(target.id)?.count ?? 0);
+  }
+
   /** Emptied on purpose and left to wither (reflexes.ts, evacuate). */
   abandoned(c: GameNode): boolean {
     return (this.memory.abandoned.get(c.id) ?? -Infinity) > this.tick;

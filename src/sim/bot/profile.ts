@@ -57,22 +57,29 @@ export interface BotProfile {
    * fight.
    */
   evacuates: boolean;
+  /**
+   * Most drain lines it runs on any one rival colony. Each level can always put
+   * more on a target than the level below, a guaranteed step in difficulty: easy
+   * one, normal two (enough to overpower a colony left alone, slowly), hard as
+   * many as it can reach with.
+   */
+  maxDrains: number;
 }
 
 export const BOT_LEVELS: Record<BotLevel, BotProfile> = {
   easy: {
     actionsPerSecond: 0.2, thinkSeconds: 0.25, reactionSeconds: 5,
     drainBias: 0.5, wallBias: 1.6, wallsFirst: true, warEdge: Infinity,
-    aimError: 0.12, evacuates: false,
+    aimError: 0.12, evacuates: false, maxDrains: 1,
   },
   normal: {
     actionsPerSecond: 0.5, thinkSeconds: 0.25, reactionSeconds: 3,
     drainBias: 1, wallBias: 1, wallsFirst: false, warEdge: 1.5,
-    aimError: 0.07, evacuates: false,
+    aimError: 0.07, evacuates: false, maxDrains: 2,
   },
   hard: {
     actionsPerSecond: 0.7, thinkSeconds: 0.25, reactionSeconds: 1.5,
     drainBias: 1.4, wallBias: 0.7, wallsFirst: false, warEdge: 1,
-    aimError: 0.03, evacuates: true,
+    aimError: 0.03, evacuates: true, maxDrains: Infinity,
   },
 };

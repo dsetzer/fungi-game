@@ -89,6 +89,10 @@ export interface Memory {
   gap: number;
   /** The bot's own dice, so its timing never disturbs the world's random stream. */
   rng: () => number;
+  /** Tick of the last evacuation (reflexes.ts) — they're rationed. */
+  evacuatedAt: number;
+  /** Colonies emptied and left to wither, until this tick: nothing feeds them. */
+  abandoned: Map<EntityId, number>;
   posture: Posture;
   postureSince: number;
   tasks: Task[];
@@ -122,6 +126,8 @@ export function memoryOf(world: World, player: PlayerId): Memory {
       lastAction: -Infinity,
       gap: 0,
       rng: makeRng(Math.imul(player + 1, 0x9e3779b1) ^ world.tick),
+      evacuatedAt: -Infinity,
+      abandoned: new Map(),
       posture: "opening",
       postureSince: world.tick,
       tasks: [],

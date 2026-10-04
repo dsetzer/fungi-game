@@ -26,11 +26,23 @@ sight. This is the spec the code in `src/sim/bot/` implements.
 
 Every level plays the same brain; three things set them apart (`profile.ts`):
 
-| | Hands | Reaction | Temperament |
-|---|---|---|---|
-| Easy | an action every 5 s | 5 s | Defensive: walls a rival off on sight, even one it could drain; drains reluctantly; never goes to war |
-| Normal | every 2 s | 3 s | Balanced |
-| Hard | every 1.4 s | 1.5 s | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less |
+| | Hands | Aim | Reaction | Temperament |
+|---|---|---|---|---|
+| Easy | an action every 5 s | throws ~12% off | 5 s | Defensive: walls a rival off on sight, even one it could drain; drains reluctantly; never goes to war |
+| Normal | every 2 s | ~7% off | 3 s | Balanced |
+| Hard | every 1.4 s | ~3% off | 1.5 s | Offensive: latches on and drains on sight; goes to war on a smaller edge; walls less; evacuates a rich colony being funnelled (once per 75 s, 400+ stores only) |
+
+**Hands are human-shaped.** The gap is the level's average, ±40% at random, and
+scaled by the action: a throw or a new hypha (a precise drag onto a target) takes
+the full gap, a wall or Sever half, a flip, cut or Flow a quarter — a person flips
+a chain of five far faster than they throw. A throw lands off target by a share of
+its length; one that lands somewhere illegal just fails, like a misdrag.
+
+**Evacuation (hard):** a colony of 400+ funnelled by two or more lines, or dying
+fast, throws 90% of its store away from its attackers and is left to wither — our
+lines into it flipped to draw from it, nothing refilling it — so the attackers
+drain a shell. Rationed to once per 75 s per bot so it stays a save, not a dodge;
+Sever, when held, is the answer instead.
 
 **Reaction is not the action gap.** It is how long after something new appears
 before the bot may respond to it at all: a rival colony coming within reach of one

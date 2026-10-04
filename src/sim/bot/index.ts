@@ -4,7 +4,8 @@ import type { World } from "../world";
 import { Board } from "./board";
 import { MIN_VALUE, memoryOf, observe, type Candidate } from "./core";
 import { reflexes } from "./reflexes";
-import { ACTION_JITTER, BOT_LEVELS, type BotLevel } from "./profile";
+import type { Command } from "../types";
+import { ACTION_EFFORT, ACTION_JITTER, BOT_LEVELS, type BotLevel } from "./profile";
 import { WEIGHTS, choosePosture, planTasks } from "./strategy";
 
 export { BOT_LEVELS, type BotLevel, type BotProfile } from "./profile";
@@ -42,11 +43,26 @@ export function runBot(world: World, player: PlayerId, level: BotLevel = "normal
   if (board.mine.length === 0) return;
   const choice = decide(board);
   if (!choice) return;
-  world.enqueue(choice.cmd);
+  world.enqueue(aim(world, choice.cmd, profile.aimError, memory.rng));
   choice.onChosen?.();
   memory.lastAction = world.tick;
   const jitter = 1 + (memory.rng() * 2 - 1) * ACTION_JITTER;
-  memory.gap = (SIM_HZ / profile.actionsPerSecond) * jitter;
+  memory.gap = (SIM_HZ / profile.actionsPerSecond) * jitter * ACTION_EFFORT[choice.cmd.type];
+}
+
+/**
+ * A throw as a hand makes it: off target by a random share of its length,
+ * `error` on average and at most twice that. A throw that lands somewhere
+ * illegal simply fails, and the action is spent — a misdrag. Everything else
+ * snaps to what it was aimed at, as it does for a player.
+ */
+export function aim(world: World, cmd: Command, error: number, rng: () => number): Command {
+  if (cmd.type !== "eject" || error <= 0) return cmd;
+  const from = world.nodes.get(cmd.from);
+  if (!from) return cmd;
+  const miss = Math.hypot(cmd.x - from.x, cmd.y - from.y) * error * (rng() + rng());
+  const a = rng() * Math.PI * 2;
+  return { ...cmd, x: cmd.x + Math.cos(a) * miss, y: cmd.y + Math.sin(a) * miss };
 }
 
 /** Every move the bot could make right now, weighted and ranked; the best legal one. */

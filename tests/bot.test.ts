@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { SIM_HZ } from "../src/config";
 import { emptyArena } from "../src/sim/arena";
-import { BOT_LEVELS, runBot } from "../src/sim/bot";
-import { ACTION_JITTER } from "../src/sim/bot/profile";
+import { BOT_LEVELS, aim, runBot } from "../src/sim/bot";
+import { ACTION_EFFORT, ACTION_JITTER } from "../src/sim/bot/profile";
+import { makeRng } from "../src/sim/geometry";
 import { stepMatch } from "../src/sim/match";
 import type { BoostKind, Command } from "../src/sim/types";
 import { World } from "../src/sim/world";
@@ -38,21 +39,51 @@ describe("bots", () => {
       world.addColony(bot.id, 0, 0, 500);
       for (let i = 0; i < 30; i++) world.addFall(Math.cos(i) * 200, Math.sin(i) * 200, 200);
       const ticks: number[] = [];
+      const kinds: Command["type"][] = [];
       const enqueue = world.enqueue.bind(world);
-      world.enqueue = (cmd) => { ticks.push(world.tick); enqueue(cmd); };
+      world.enqueue = (cmd) => { ticks.push(world.tick); kinds.push(cmd.type); enqueue(cmd); };
       const seconds = 10;
       // Asked every tick, far more often than it thinks in a match.
       for (let t = 0; t < seconds * SIM_HZ; t++) {
         runBot(world, bot.id, level);
         world.step();
       }
+      // Each gap is at least the level's gap, less the jitter, scaled by how much
+      // aim the action before it took.
       const minGap = (SIM_HZ / BOT_LEVELS[level].actionsPerSecond) * (1 - ACTION_JITTER);
-      expect(ticks.length, level).toBeLessThanOrEqual((seconds * SIM_HZ) / minGap + 1);
       const gaps = ticks.slice(1).map((t, i) => t - ticks[i]);
-      for (const g of gaps) expect(g, level).toBeGreaterThanOrEqual(minGap);
+      gaps.forEach((g, i) => expect(g, `${level} after ${kinds[i]}`).toBeGreaterThanOrEqual(Math.floor(minGap * ACTION_EFFORT[kinds[i]])));
+      const minEffort = Math.min(...Object.values(ACTION_EFFORT));
+      expect(ticks.length, level).toBeLessThanOrEqual((seconds * SIM_HZ) / (minGap * minEffort) + 1);
       // Jittered: not every gap the same.
       if (gaps.length > 2) expect(new Set(gaps).size, level).toBeGreaterThan(1);
     }
+  });
+});
+
+describe("bot hands", () => {
+  it("land throws off target by a share of their length; everything else is exact", () => {
+    const world = new World(emptyArena(3000));
+    const p = world.addPlayer("bot", true);
+    const c = world.addColony(p.id, 0, 0, 500);
+    const rng = makeRng(3);
+    const misses: number[] = [];
+    for (let i = 0; i < 200; i++) {
+      const thrown = aim(world, { type: "eject", player: p.id, from: c.id, x: 400, y: 0 }, 0.07, rng);
+      if (thrown.type === "eject") misses.push(Math.hypot(thrown.x - 400, thrown.y));
+    }
+    expect(Math.max(...misses)).toBeLessThanOrEqual(400 * 0.07 * 2);
+    const mean = misses.reduce((s, m) => s + m, 0) / misses.length;
+    expect(mean).toBeGreaterThan(400 * 0.07 * 0.8);
+    expect(mean).toBeLessThan(400 * 0.07 * 1.2);
+    const link: Command = { type: "connect", player: p.id, from: c.id, to: 7 };
+    expect(aim(world, link, 0.07, rng)).toBe(link);
+  });
+
+  it("are quicker at clicks than at aimed drags", () => {
+    expect(ACTION_EFFORT.reverse).toBeLessThan(ACTION_EFFORT.wall);
+    expect(ACTION_EFFORT.wall).toBeLessThan(ACTION_EFFORT.eject);
+    expect(ACTION_EFFORT.connect).toBe(ACTION_EFFORT.eject);
   });
 });
 
@@ -86,6 +117,43 @@ function recorder(world: World) {
 }
 
 describe("bot behaviour (bot-design.md)", () => {
+  it("hard evacuates a rich colony being funnelled, then not again for a while", () => {
+    const { world, bot, rival } = duel();
+    const rich = world.addColony(bot.id, 0, 0, 900);
+    world.addColony(bot.id, -500, 0, 300);
+    const a = world.addColony(rival.id, 380, 120, 5000);
+    const b = world.addColony(rival.id, 380, -120, 5000);
+    world.enqueue({ type: "connect", player: rival.id, from: rich.id, to: a.id });
+    world.enqueue({ type: "connect", player: rival.id, from: rich.id, to: b.id });
+    world.step();
+    const log = recorder(world);
+    for (let i = 0; i < 12 * SIM_HZ; i++) {
+      runBot(world, bot.id, "hard");
+      world.step();
+    }
+    const evacuations = log.filter((l) => l.cmd.type === "eject" && l.cmd.from === rich.id && l.cmd.fraction === 0.9);
+    expect(evacuations).toHaveLength(1);
+    const child = [...world.nodes.values()].find((n) => n.owner === bot.id && n.kind === "colony" && n.id > b.id);
+    expect(child).toBeDefined();
+    expect(child!.nutrients).toBeGreaterThan(500); // most of it got out
+  });
+
+  it("normal never evacuates", () => {
+    const { world, bot, rival } = duel();
+    const rich = world.addColony(bot.id, 0, 0, 900);
+    const a = world.addColony(rival.id, 380, 120, 5000);
+    const b = world.addColony(rival.id, 380, -120, 5000);
+    world.enqueue({ type: "connect", player: rival.id, from: rich.id, to: a.id });
+    world.enqueue({ type: "connect", player: rival.id, from: rich.id, to: b.id });
+    world.step();
+    const log = recorder(world);
+    for (let i = 0; i < 12 * SIM_HZ; i++) {
+      runBot(world, bot.id, "normal");
+      world.step();
+    }
+    expect(log.some((l) => l.cmd.type === "eject" && l.cmd.fraction === 0.9)).toBe(false);
+  });
+
   it("cuts its Harvest loop once Harvest is lost, so the fall gets eaten", () => {
     const { world, bot } = duel();
     world.addColony(bot.id, 0, 0, 800);

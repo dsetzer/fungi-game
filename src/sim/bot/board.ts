@@ -297,8 +297,14 @@ export class Board {
     return Math.min(c.nutrients, rate * HORIZON) * (1 + ENEMY_LOSS) + (dies ? COLONY : 0);
   }
 
+  /** Emptied on purpose and left to wither (reflexes.ts, evacuate). */
+  abandoned(c: GameNode): boolean {
+    return (this.memory.abandoned.get(c.id) ?? -Infinity) > this.tick;
+  }
+
   /** Food for a colony running down is worth its survival too. */
   rescueBonus(c: GameNode): number {
+    if (this.abandoned(c)) return 0;
     const i = this.info.get(c.id);
     return i && i.lasts < HORIZON ? c.nutrients * 0.5 + COLONY * 0.5 : 0;
   }

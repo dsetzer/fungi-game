@@ -1,4 +1,4 @@
-import { FLOW_MULTIPLIER, FLOW_SECONDS, PIPE_RATE_PER_SEC, UPKEEP_PER_SEC, WALL_COST } from "../../config";
+import { EJECT_FRACTION_MAX, FLOW_MULTIPLIER, FLOW_SECONDS, PIPE_RATE_PER_SEC, UPKEEP_PER_SEC, WALL_COST } from "../../config";
 import { dist } from "../geometry";
 import type { EntityId, GameNode } from "../types";
 import type { Board } from "./board";
@@ -26,6 +26,7 @@ export function reflexes(board: Board): Candidate[] {
   rings(board, push);
   relink(board, push);
   saveHubs(board, push);
+  evacuate(board, push);
   walls(board, push);
   flow(board, push);
   nearThrows(board, push);
@@ -120,7 +121,7 @@ function supply(board: Board, push: Push): void {
     const ri = board.info.get(r.id)!;
     if (ri.need > 0 || !affords(board, r) || !board.hasSlot(r)) continue;
     for (const f of board.mine) {
-      if (f === r) continue;
+      if (f === r || board.abandoned(f)) continue;
       const fi = board.info.get(f.id)!;
       if (fi.need < 2 || fi.need <= ri.need || !board.inReach(r, f)) continue;
       const moved = Math.min(Math.max(r.nutrients - f.nutrients, COLONY) / 2, LINE);
@@ -147,6 +148,7 @@ const FLIP_MARGIN_SECONDS = 90;
 function reverse(board: Board, push: Push): void {
   const lasts = (n: GameNode, rate: number) => (rate >= 0 ? Infinity : n.nutrients / -rate);
   for (const i of board.info.values()) {
+    if (board.abandoned(i.node)) continue; // emptied on purpose: nothing goes back in
     const underAttack = i.attackedBy.length > 0;
     if (i.lasts >= FLIP_TRIGGER_SECONDS && !underAttack) continue;
     for (const p of i.feedsColonies) {
@@ -245,6 +247,63 @@ function saveHubs(board: Board, push: Push): void {
       });
       break;
     }
+  }
+}
+
+// ---------- evacuation ----------
+
+/** Only a colony holding this much is worth saving by evacuation. */
+const EVACUATE_MIN_STORE = 400;
+/** One evacuation per bot this often, at most: a rare save, not a dodge for every fight. */
+const EVACUATE_COOLDOWN_SECONDS = 75;
+/** An emptied colony is left alone this long. */
+const ABANDON_SECONDS = 60;
+
+/**
+ * Deny a drain (temperament: hard only). A rich colony that's losing — funnelled
+ * by two or more lines, or dying fast — throws most of its store out, away from
+ * its attackers, and is left to wither: our lines into it are flipped to draw
+ * from it, and nothing refills it, so the attackers drain a shell. Sever, when
+ * held, is the better answer and handles it instead.
+ */
+function evacuate(board: Board, push: Push): void {
+  const memory = board.memory;
+  // The shells: flip our lines into them, so they feed out rather than in.
+  for (const p of board.world.pipes.values()) {
+    if (p.owner !== board.me) continue;
+    const to = board.world.nodes.get(p.to);
+    const from = board.world.nodes.get(p.from);
+    if (!to || !from || !board.abandoned(to) || from.owner !== board.me || from.kind !== "colony") continue;
+    push({
+      value: LINE * 0.3, category: "defend", why: `abandon ${to.id}`,
+      cmd: { type: "reverse", player: board.me, pipe: p.id },
+      valid: () => board.world.canReverse(board.me, p.id).ok,
+    });
+  }
+  if (!board.profile.evacuates || board.holds("sever")) return;
+  if (board.tick - memory.evacuatedAt < seconds(EVACUATE_COOLDOWN_SECONDS)) return;
+  for (const i of board.info.values()) {
+    const c = i.node;
+    if (c.nutrients < EVACUATE_MIN_STORE || i.attackedBy.length === 0 || board.abandoned(c)) continue;
+    if (i.attackedBy.length < 2 && i.lasts >= 30) continue; // a fair fight: answer it, don't run
+    const attackers = i.attackedBy.map((a) => a.attacker);
+    let best: { spot: { x: number; y: number }; score: number } | null = null;
+    for (const { spot } of board.throwSpots(c)) {
+      if (attackers.some((a) => dist(a.x, a.y, spot.x, spot.y) <= board.world.reachOf(a))) continue;
+      const score = Math.min(...attackers.map((a) => dist(a.x, a.y, spot.x, spot.y)));
+      if (!best || score > best.score) best = { spot, score };
+    }
+    if (!best) continue;
+    const spot = best.spot;
+    push(reacting({
+      value: c.nutrients * EJECT_FRACTION_MAX * (1 + 0.4) + COLONY * 0.5, category: "defend", why: `evacuate ${c.id}`,
+      cmd: { type: "eject", player: board.me, from: c.id, x: spot.x, y: spot.y, fraction: EJECT_FRACTION_MAX },
+      valid: () => board.world.canEject(board.me, c.id, spot, EJECT_FRACTION_MAX).ok,
+      onChosen: () => {
+        memory.evacuatedAt = board.tick;
+        memory.abandoned.set(c.id, board.tick + seconds(ABANDON_SECONDS));
+      },
+    }, ...i.attackedBy.map((a) => `pipe:${a.pipe.id}`)));
   }
 }
 

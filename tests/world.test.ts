@@ -758,9 +758,10 @@ describe("fall respawning", () => {
     world.endOnLastStanding = false;
     const target = world.fallTarget;
     expect(target).toBeGreaterThan(0);
-    // Eat half the map's food.
+    // Eat half the map's food, and burn plenty off as upkeep to pay for a group.
     const eaten = falls(world).slice(0, Math.floor(target / 2));
     for (const f of eaten) world.nodes.delete(f.id);
+    world.fallReserve = 100_000;
     const before = falls(world).length;
     const old = new Set(falls(world).map((f) => f.id));
     for (let i = 0; i < 6 * SIM_HZ; i++) world.step();
@@ -772,6 +773,22 @@ describe("fall respawning", () => {
     for (const f of fresh) {
       for (const c of colonies) expect(dist(f.x, f.y, c.x, c.y)).toBeGreaterThanOrEqual(world.auraOf(c));
     }
+  });
+
+  it("only puts back what upkeep has burned off", () => {
+    const world = World.createMatch(7);
+    world.endOnLastStanding = false;
+    // Players ate half the map: that food is in their colonies, not gone.
+    for (const f of falls(world).slice(0, Math.floor(world.fallTarget / 2))) world.nodes.delete(f.id);
+    const old = new Set(falls(world).map((f) => f.id));
+    for (let i = 0; i < 120 * SIM_HZ; i++) world.step();
+    const respawned = falls(world)
+      .filter((f) => !old.has(f.id))
+      .reduce((sum, f) => sum + f.nutrients, 0);
+    const burned = [...world.stats.values()].reduce((sum, s) => sum + s.upkeep, 0);
+    expect(burned).toBeGreaterThan(0);
+    expect(respawned).toBeLessThanOrEqual(burned + 1e-6);
+    expect(respawned + world.fallReserve).toBeCloseTo(burned, 3);
   });
 
   it("never grows the map past what it started with", () => {

@@ -78,6 +78,8 @@ export const WALLS_CUT_EXISTING_PIPES = false;
 export const NEUTRAL_FALL_CLUSTERS = 70; // in addition to one group per spawn
 // Falls respawn through a round, like boosts: while the map holds fewer falls than
 // it started with, a new group appears somewhere random, open and unclaimed this often.
+// A new group only gets what upkeep and walls have burned off (World.fallReserve):
+// the map refills exactly as fast as players burn food, never faster.
 export const FALL_SPAWN_SECONDS = 6;
 export const FALL_CLUSTER_BLOBS_MIN = 1;
 export const FALL_CLUSTER_BLOBS_MAX = 6;

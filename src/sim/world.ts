@@ -100,6 +100,14 @@ export class World {
   botLevel: BotLevel = "normal";
   /** Falls the map started with; respawning tops it back up to this (spawnFalls). */
   fallTarget = 0;
+  /**
+   * Nutrients burned off by upkeep and walls, not yet returned to the map. Falls
+   * respawn only out of this: what players eat stays theirs until it is drained
+   * from them or burned off, so the map never refills faster than it empties.
+   */
+  fallReserve = 0;
+  /** The next respawning group's pools, rolled ahead so it waits until the reserve covers it. */
+  private nextFalls: number[] | null = null;
 
   private nextId = 1;
   /** Player ids are never reused: a respawn is a new player, and a dropped one's id stays dead. */
@@ -200,11 +208,12 @@ export class World {
    *
    * With `facing` (a spawn), the group has at least three falls and one of the
    * scattered ones lies toward it, inside starting reach: the first meal.
-   * Falls that would land in a wall or on another node are skipped.
+   * Falls that would land in a wall or on another node are skipped. `pools`, if
+   * given, are the group's sizes, already rolled (rollFallPools).
    */
-  addFallCluster(centre: Vec, facing?: Vec): GameNode[] {
+  addFallCluster(centre: Vec, facing?: Vec, pools?: number[]): GameNode[] {
     const roll = (min: number, max: number) => min + Math.floor(this.rng() * (max - min + 1));
-    let count = roll(FALL_CLUSTER_BLOBS_MIN, FALL_CLUSTER_BLOBS_MAX);
+    let count = pools?.length ?? roll(FALL_CLUSTER_BLOBS_MIN, FALL_CLUSTER_BLOBS_MAX);
     if (facing) count = Math.max(3, count);
     // The tight core; a spawn's group always keeps one fall back to aim at it.
     const tight = Math.min(roll(1, FALL_CLUSTER_TIGHT_MAX), facing ? count - 1 : count);
@@ -222,10 +231,21 @@ export class World {
       // Around a tight neighbour rather than the exact centre, so the core is a clump.
       const from = i > 0 && i < tight ? placed[placed.length - 1] ?? centre : centre;
       const p = { x: from.x + Math.cos(a) * d, y: from.y + Math.sin(a) * d };
-      const pool = Math.round(FALL_POOL_MIN * (FALL_POOL_MAX / FALL_POOL_MIN) ** this.rng());
+      const pool = pools?.[i] ?? this.rollFallPool();
       if (this.isFreeSpot(p, NODE_SPACING)) placed.push(this.addFall(p.x, p.y, pool));
     }
     return placed;
+  }
+
+  /** One fall's size: spread evenly on a log scale, as many scraps as feasts. */
+  private rollFallPool(): number {
+    return Math.round(FALL_POOL_MIN * (FALL_POOL_MAX / FALL_POOL_MIN) ** this.rng());
+  }
+
+  /** A whole group's sizes, for a group placed later. */
+  private rollFallPools(): number[] {
+    const count = FALL_CLUSTER_BLOBS_MIN + Math.floor(this.rng() * (FALL_CLUSTER_BLOBS_MAX - FALL_CLUSTER_BLOBS_MIN + 1));
+    return Array.from({ length: count }, () => this.rollFallPool());
   }
 
   /**
@@ -243,8 +263,10 @@ export class World {
   /**
    * Fall groups dropped at random. Mid-round (`unclaimed`) they also stay out of
    * every player's territory: food appearing inside a network would be a free gift.
+   * `pools` sets the sizes of the (single) group placed.
    */
-  private scatterNeutralClusters(count: number, unclaimed = false): void {
+  private scatterNeutralClusters(count: number, unclaimed = false, pools?: number[]): GameNode[] {
+    const falls: GameNode[] = [];
     let placed = 0;
     for (let attempt = 0; placed < count && attempt < count * 50; attempt++) {
       const a = this.rng() * Math.PI * 2;
@@ -262,10 +284,11 @@ export class World {
       // Skip pockets walled off from the main cave system — nobody could ever reach them.
       const free = this.isFreeSpot(c, NODE_SPACING * 2, unclaimed ? 0 : undefined);
       if (!nearSpawn && this.arena.isReachable(c) && free) {
-        this.addFallCluster(c);
+        falls.push(...this.addFallCluster(c, undefined, pools));
         placed++;
       }
     }
+    return falls;
   }
 
   // ---------- queries ----------
@@ -605,6 +628,7 @@ export class World {
         if (!this.canBuildWall(cmd.player, cmd.from, cmd).ok) return;
         const from = this.nodes.get(cmd.from)!;
         from.nutrients -= WALL_COST;
+        this.fallReserve += WALL_COST;
         const { a, b } = this.crossbarFor(from, cmd);
         const id = this.nextId++;
         const bar: Barrier = { id, owner: cmd.player, anchor: from.id, x: cmd.x, y: cmd.y, a, b };
@@ -673,12 +697,25 @@ export class World {
     this.spawnFalls();
   }
 
-  /** Falls respawn through the round: one random group at a time, up to the starting count. */
+  /**
+   * Falls respawn through the round: one random group at a time, up to the
+   * starting count, and only out of what upkeep and walls have burned off
+   * (fallReserve). What players have eaten is still in their colonies; the map
+   * gets it back by them burning it, not by spawning more.
+   */
   private spawnFalls(): void {
     if (this.tick % (FALL_SPAWN_SECONDS * SIM_HZ) !== 0) return;
     let count = 0;
     for (const n of this.nodes.values()) if (n.kind === "fall") count++;
-    if (count < this.fallTarget) this.scatterNeutralClusters(1, true);
+    if (count >= this.fallTarget) return;
+    // Rolled before it is affordable, so a feast waits for the reserve to fill
+    // rather than being cut down to whatever happens to be in it.
+    this.nextFalls ??= this.rollFallPools();
+    if (this.fallReserve < this.nextFalls.reduce((a, b) => a + b, 0)) return;
+    const placed = this.scatterNeutralClusters(1, true, this.nextFalls);
+    if (placed.length === 0) return; // nowhere open right now: try again next time
+    for (const f of placed) this.fallReserve -= f.nutrients;
+    this.nextFalls = null;
   }
 
   /**
@@ -768,6 +805,7 @@ export class World {
       const sustained = inAmt > EPS && inAmt + EPS >= demand(n.id);
       if (!sustained) {
         add(n.id, -UPKEEP_PER_SEC * DT);
+        this.fallReserve += UPKEEP_PER_SEC * DT;
         if (n.owner != null) this.tally(n.owner).upkeep += UPKEEP_PER_SEC * DT;
       }
     }

@@ -17,6 +17,7 @@ import {
 import { emptyArena } from "../src/sim/arena";
 import { dist } from "../src/sim/geometry";
 import { spawnInto } from "../src/sim/spawn";
+import { visibleNodes } from "../src/sim/vision";
 import { World } from "../src/sim/world";
 
 const openArena = (walls: Parameters<typeof emptyArena>[1] = []) => emptyArena(2000, walls);
@@ -779,5 +780,20 @@ describe("fall respawning", () => {
     const target = world.fallTarget;
     for (let i = 0; i < 30 * SIM_HZ; i++) world.step();
     expect(falls(world).length).toBeLessThanOrEqual(target);
+  });
+});
+
+describe("vision", () => {
+  it("reveals a rival once its aura reaches into vision, core still outside", () => {
+    const { world, me } = soloWorld([], 4000);
+    const rival = world.addPlayer("rival", true);
+    const eye = world.addColony(me.id, 0, 0, 100);
+    const r = world.visionOf(eye);
+    const far = world.addColony(rival.id, r + 200, 0, 3000); // aura well over 200
+    const gone = world.addColony(rival.id, 0, r + 200, 20); // aura too small to reach
+    const seen = visibleNodes(world, me.id);
+    expect(world.auraOf(far)).toBeGreaterThan(200);
+    expect(seen.has(far.id)).toBe(true);
+    expect(seen.has(gone.id)).toBe(false);
   });
 });

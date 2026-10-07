@@ -96,9 +96,12 @@ export class FogOfWar {
     return Math.min(this.n - 1, Math.max(0, Math.floor((v - this.origin) / this.cell)));
   }
 
-  /** True while one of your colonies can currently see this point. */
-  isVisible(x: number, y: number): boolean {
-    return this.eyes.some((e) => Math.hypot(e.x - x, e.y - y) <= e.r);
+  /**
+   * True while one of your colonies can currently see this point — or, with
+   * `margin`, any part of a disc that wide around it.
+   */
+  isVisible(x: number, y: number, margin = 0): boolean {
+    return this.eyes.some((e) => Math.hypot(e.x - x, e.y - y) <= e.r + margin);
   }
 
   isExplored(x: number, y: number): boolean {
@@ -107,14 +110,16 @@ export class FogOfWar {
 
   /**
    * Nodes to draw: your own always, rivals only while visible, falls and neutral
-   * boosts once seen (they don't move, so remembering them is fair).
+   * boosts once seen (they don't move, so remembering them is fair). A node is
+   * visible once any of its aura is: a rival's territory reaching into your vision
+   * gives the colony away, even with its core still in the fog.
    */
   visibleNodes(world: World, player: PlayerId): Set<EntityId> {
     const out = new Set<EntityId>();
     for (const n of world.nodes.values()) {
       const seen =
         n.owner === player ||
-        this.isVisible(n.x, n.y) ||
+        this.isVisible(n.x, n.y, world.auraOf(n)) ||
         (n.owner == null && this.isExplored(n.x, n.y));
       if (seen) out.add(n.id);
     }

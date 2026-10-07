@@ -19,16 +19,21 @@ export function eyesOf(world: World, player: PlayerId): { x: number; y: number; 
   return eyes;
 }
 
-export function canSee(eyes: { x: number; y: number; r: number }[], p: Vec): boolean {
-  return eyes.some((e) => Math.hypot(e.x - p.x, e.y - p.y) <= e.r);
+/** True if any eye sees the point, or — with `margin` — any part of a disc that wide around it. */
+export function canSee(eyes: { x: number; y: number; r: number }[], p: Vec, margin = 0): boolean {
+  return eyes.some((e) => Math.hypot(e.x - p.x, e.y - p.y) <= e.r + margin);
 }
 
-/** Nodes a player may know about right now: their own, plus anything in sight. */
+/**
+ * Nodes a player may know about right now: their own, plus anything in sight.
+ * A node counts as in sight once any of its aura is: a rival's territory reaching
+ * into your vision gives the colony away, even with its core still in the fog.
+ */
 export function visibleNodes(world: World, player: PlayerId): Set<EntityId> {
   const eyes = eyesOf(world, player);
   const out = new Set<EntityId>();
   for (const n of world.nodes.values()) {
-    if (n.owner === player || canSee(eyes, n)) out.add(n.id);
+    if (n.owner === player || canSee(eyes, n, world.auraOf(n))) out.add(n.id);
   }
   return out;
 }
